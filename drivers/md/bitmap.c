@@ -1719,6 +1719,7 @@ void bitmap_destroy(struct mddev *mddev)
 
 	bitmap_free(bitmap);
 }
+EXPORT_SYMBOL_GPL(bitmap_destroy);
 
 /*
  * initialize the bitmap structure
