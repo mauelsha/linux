@@ -3509,6 +3509,15 @@ out_unlock:
 	return rv;
 }
 
+/* API to expose level_store() to dm-raid target */
+int md_takeover(struct mddev *mddev, const char *buf)
+{
+	ssize_t r = level_store(mddev, buf, strlen(buf));
+
+	return r < 0 ? (int) r : 0;
+}
+EXPORT_SYMBOL_GPL(md_takeover);
+
 static struct md_sysfs_entry md_level =
 __ATTR(level, S_IRUGO|S_IWUSR, level_show, level_store);
 
@@ -4050,18 +4059,14 @@ size_show(struct mddev *mddev, char *page)
 
 static int update_size(struct mddev *mddev, sector_t num_sectors);
 
-static ssize_t
-size_store(struct mddev *mddev, const char *buf, size_t len)
+int md_resize(struct mddev *mddev, sector_t sectors)
 {
+	int err;
+
 	/* If array is inactive, we can reduce the component size, but
 	 * not increase it (except from 0).
 	 * If array is active, we can try an on-line resize
 	 */
-	sector_t sectors;
-	int err = strict_blocks_to_sectors(buf, &sectors);
-
-	if (err < 0)
-		return err;
 	err = mddev_lock(mddev);
 	if (err)
 		return err;
@@ -4080,7 +4085,20 @@ size_store(struct mddev *mddev, const char *buf, size_t len)
 			err = -ENOSPC;
 	}
 	mddev_unlock(mddev);
-	return err ? err : len;
+	return err;
+}
+EXPORT_SYMBOL_GPL(md_resize);
+
+static ssize_t
+size_store(struct mddev *mddev, const char *buf, size_t len)
+{
+	sector_t dev_sectors;
+	int err = strict_blocks_to_sectors(buf, &dev_sectors);
+
+	if (!err)
+		err = md_resize(mddev, dev_sectors);
+
+	return err ? (ssize_t) err : len;
 }
 
 static struct md_sysfs_entry md_size =
