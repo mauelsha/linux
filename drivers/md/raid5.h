@@ -595,23 +595,23 @@ struct r5conf {
 #define ALGORITHM_PARITY_0_6		20
 #define ALGORITHM_PARITY_N_6		ALGORITHM_PARITY_N
 
+#define in_limits(layout, min, max) ((layout) >= (min) && (layout) <= (max))
+
 static inline int algorithm_valid_raid5(int layout)
 {
-	return (layout >= 0) &&
-		(layout <= 5);
-}
-static inline int algorithm_valid_raid6(int layout)
-{
-	return (layout >= 0 && layout <= 5)
-		||
-		(layout >= 8 && layout <= 10)
-		||
-		(layout >= 16 && layout <= 20);
+	return in_limits(layout, ALGORITHM_LEFT_ASYMMETRIC, ALGORITHM_PARITY_N);
 }
 
 static inline int algorithm_is_DDF(int layout)
 {
-	return layout >= 8 && layout <= 10;
+	return in_limits(layout, ALGORITHM_ROTATING_ZERO_RESTART, ALGORITHM_ROTATING_N_CONTINUE);
+}
+
+static inline int algorithm_valid_raid6(int layout)
+{
+	return (algorithm_valid_raid5(layout) ||
+		algorithm_is_DDF(layout) ||
+		in_limits(layout, ALGORITHM_LEFT_ASYMMETRIC_6, ALGORITHM_PARITY_0_6));
 }
 
 extern void md_raid5_kick_device(struct r5conf *conf);
