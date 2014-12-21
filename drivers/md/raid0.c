@@ -263,8 +263,11 @@ static int create_strip_zones(struct mddev *mddev, struct r0conf **private_conf)
 			 mdname(mddev),
 			 (unsigned long long)smallest->sectors);
 	}
-	mddev->queue->backing_dev_info.congested_fn = raid0_congested;
-	mddev->queue->backing_dev_info.congested_data = mddev;
+
+	if (mddev->queue) {
+		mddev->queue->backing_dev_info.congested_fn = raid0_congested;
+		mddev->queue->backing_dev_info.congested_data = mddev;
+	}
 
 	/*
 	 * now since we have the hard sector sizes, we can make sure
@@ -277,14 +280,16 @@ static int create_strip_zones(struct mddev *mddev, struct r0conf **private_conf)
 		goto abort;
 	}
 
-	blk_queue_io_min(mddev->queue, mddev->chunk_sectors << 9);
-	blk_queue_io_opt(mddev->queue,
-			 (mddev->chunk_sectors << 9) * mddev->raid_disks);
+	if (mddev->queue) {
+		blk_queue_io_min(mddev->queue, mddev->chunk_sectors << 9);
+		blk_queue_io_opt(mddev->queue,
+				 (mddev->chunk_sectors << 9) * mddev->raid_disks);
 
-	if (!discard_supported)
-		queue_flag_clear_unlocked(QUEUE_FLAG_DISCARD, mddev->queue);
-	else
-		queue_flag_set_unlocked(QUEUE_FLAG_DISCARD, mddev->queue);
+		if (!discard_supported)
+			queue_flag_clear_unlocked(QUEUE_FLAG_DISCARD, mddev->queue);
+		else
+			queue_flag_set_unlocked(QUEUE_FLAG_DISCARD, mddev->queue);
+	}
 
 	pr_debug("md/raid0:%s: done.\n", mdname(mddev));
 	*private_conf = conf;
@@ -436,9 +441,12 @@ static int raid0_run(struct mddev *mddev)
 	}
 	if (md_check_no_bitmap(mddev))
 		return -EINVAL;
-	blk_queue_max_hw_sectors(mddev->queue, mddev->chunk_sectors);
-	blk_queue_max_write_same_sectors(mddev->queue, mddev->chunk_sectors);
-	blk_queue_max_discard_sectors(mddev->queue, mddev->chunk_sectors);
+
+	if (mddev->queue) {
+		blk_queue_max_hw_sectors(mddev->queue, mddev->chunk_sectors);
+		blk_queue_max_write_same_sectors(mddev->queue, mddev->chunk_sectors);
+		blk_queue_max_discard_sectors(mddev->queue, mddev->chunk_sectors);
+	}
 
 	/* if private is not null, we are here after takeover */
 	if (mddev->private == NULL) {
@@ -455,23 +463,25 @@ static int raid0_run(struct mddev *mddev)
 	printk(KERN_INFO "md/raid0:%s: md_size is %llu sectors.\n",
 	       mdname(mddev),
 	       (unsigned long long)mddev->array_sectors);
-	/* calculate the max read-ahead size.
-	 * For read-ahead of large files to be effective, we need to
-	 * readahead at least twice a whole stripe. i.e. number of devices
-	 * multiplied by chunk size times 2.
-	 * If an individual device has an ra_pages greater than the
-	 * chunk size, then we will not drive that device as hard as it
-	 * wants.  We consider this a configuration error: a larger
-	 * chunksize should be used in that case.
-	 */
-	{
+
+	if (mddev->queue) {
+		/* calculate the max read-ahead size.
+		 * For read-ahead of large files to be effective, we need to
+		 * readahead at least twice a whole stripe. i.e. number of devices
+		 * multiplied by chunk size times 2.
+		 * If an individual device has an ra_pages greater than the
+		 * chunk size, then we will not drive that device as hard as it
+		 * wants.  We consider this a configuration error: a larger
+		 * chunksize should be used in that case.
+		 */
 		int stripe = mddev->raid_disks *
 			(mddev->chunk_sectors << 9) / PAGE_SIZE;
 		if (mddev->queue->backing_dev_info.ra_pages < 2* stripe)
 			mddev->queue->backing_dev_info.ra_pages = 2* stripe;
+
+		blk_queue_merge_bvec(mddev->queue, raid0_mergeable_bvec);
 	}
 
-	blk_queue_merge_bvec(mddev->queue, raid0_mergeable_bvec);
 	dump_zones(mddev);
 
 	ret = md_integrity_register(mddev);
@@ -485,7 +495,9 @@ static int raid0_stop(struct mddev *mddev)
 {
 	struct r0conf *conf = mddev->private;
 
-	blk_sync_queue(mddev->queue); /* the unplug fn references 'conf'*/
+	if (mddev->queue)
+		blk_sync_queue(mddev->queue); /* the unplug fn references 'conf'*/
+
 	kfree(conf->strip_zone);
 	kfree(conf->devlist);
 	kfree(conf);
