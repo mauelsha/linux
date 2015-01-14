@@ -204,7 +204,7 @@ static bool is_raid456(struct raid_set *rs)
 	return __in_range(rs->md.level, 4, 6);
 }
 
-/* Return true, if raid set in @rs is raid0 */
+/* Return true, if raid set in @rs is striped raid */
 static bool is_striped(struct raid_set *rs)
 {
 	return is_raid0(rs) || is_raid456(rs);
@@ -404,7 +404,8 @@ static int raid_is_congested(struct dm_target_callbacks *cb, int bits)
 	return md_raid5_congested(&rs->md, bits);
 }
 
-/* For out-of_place reshape, we need free space at the beginning of each RAID disk
+/*
+ * For out-of_place reshape, we need free space at the beginning of each RAID disk
  * and at the end.
  * Because growing reshapes of a RAID array are more likely than shrinking ones.
  * return 2/3 of new chunks for growing
@@ -1704,6 +1705,10 @@ static int super_load(struct raid_set *rs, struct md_rdev *rdev, struct md_rdev 
 		rs_set_new(rs);
 		super_sync(mddev, rdev);
 
+		/*
+		 * Set dm-raid private flag to indicate first use of device.
+		 * Will be reset before running the array.
+		 */
 		set_bit(FirstUse, &rdev->flags);
 
 		/* Force writing of superblocks to disk */
