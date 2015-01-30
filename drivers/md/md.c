@@ -3604,18 +3604,32 @@ level_store(struct mddev *mddev, const char *buf, size_t len)
 		mddev->in_sync = 1;
 		del_timer_sync(&mddev->safemode_timer);
 	}
+<<<<<<< master
+	if (mddev->queue)
+		blk_set_stacking_limits(&mddev->queue->limits);
+=======
+<<<<<<< HEAD
+	blk_set_stacking_limits(&mddev->queue->limits);
+>>>>>>> HEAD~75
+	pers->run(mddev);
+	set_bit(MD_CHANGE_DEVS, &mddev->flags);
+	mddev_resume(mddev);
+=======
 	if (mddev->queue)
 		blk_set_stacking_limits(&mddev->queue->limits);
 	pers->run(mddev);
 	set_bit(MD_CHANGE_DEVS, &mddev->flags);
-	mddev_resume(mddev);
+>>>>>>> is_divisable_by_data_devs() sets false dev_sectors in case of raid5 -> raid0
 	if (!mddev->thread)
 		md_update_sb(mddev, 1);
 	sysfs_notify(&mddev->kobj, NULL, "level");
 	md_new_event(mddev);
+<<<<<<< HEAD
 	rv = len;
 out_unlock:
 	mddev_unlock(mddev);
+=======
+>>>>>>> is_divisable_by_data_devs() sets false dev_sectors in case of raid5 -> raid0
 	return rv;
 }
 
