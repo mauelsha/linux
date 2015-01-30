@@ -3416,22 +3416,12 @@ level_store(struct mddev *mddev, const char *buf, size_t len)
 	}
 	if (mddev->queue)
 		blk_set_stacking_limits(&mddev->queue->limits);
-/* HM FIXME: REMOVEME: printks */
-printk(KERN_WARNING "md: %s %u mddev->private=%p\n", __func__, __LINE__, mddev->private);
-printk(KERN_WARNING "md: %s %u mddev->private=%p pers->run=%d\n", __func__, __LINE__, mddev->private, pers->run(mddev));
-	// pers->run(mddev);
-printk(KERN_WARNING "md: %s %u mddev->private=%p\n", __func__, __LINE__, mddev->private);
+	pers->run(mddev);
 	set_bit(MD_CHANGE_DEVS, &mddev->flags);
-printk(KERN_WARNING "md: %s %u\n", __func__, __LINE__);
-	mddev_resume(mddev);
-printk(KERN_WARNING "md: %s %u\n", __func__, __LINE__);
 	if (!mddev->thread)
 		md_update_sb(mddev, 1);
-printk(KERN_WARNING "md: %s %u\n", __func__, __LINE__);
 	sysfs_notify(&mddev->kobj, NULL, "level");
-printk(KERN_WARNING "md: %s %u\n", __func__, __LINE__);
 	md_new_event(mddev);
-printk(KERN_WARNING "md: %s %u\n", __func__, __LINE__);
 	return rv;
 }
 
