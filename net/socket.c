@@ -372,7 +372,6 @@ struct file *sock_alloc_file(struct socket *sock, int flags, const char *dname)
 	path.mnt = mntget(sock_mnt);
 
 	d_instantiate(path.dentry, SOCK_INODE(sock));
-	SOCK_INODE(sock)->i_fop = &socket_file_ops;
 
 	file = alloc_file(&path, FMODE_READ | FMODE_WRITE,
 		  &socket_file_ops);
@@ -870,9 +869,6 @@ static ssize_t sock_splice_read(struct file *file, loff_t *ppos,
 static struct sock_iocb *alloc_sock_iocb(struct kiocb *iocb,
 					 struct sock_iocb *siocb)
 {
-	if (!is_sync_kiocb(iocb))
-		BUG();
-
 	siocb->kiocb = iocb;
 	iocb->private = siocb;
 	return siocb;
