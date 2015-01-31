@@ -2208,13 +2208,13 @@ static int rs_run(struct raid_set *rs)
 	} else if (r < 0)
 		return ti_error_einval(rs->ti, "Superblock validation failed!");
 
-	/* Now that we have any existing superblock data at hand, check for invalid ctr flags passed in */
 	if (rs_conversion_requested(rs)) {
+		/* Now that we have any existing superblock data at hand, check for invalid ctr flags passed in */
 		if (rs->flags & (DM_RAID_SYNC|DM_RAID_NOSYNC))
 			return ti_error_einval(rs->ti, "sync/nosync prohibited on takeover/reshape/resize request");
-	else if (!is_divisible_by_data_devs(rs))
+	/* Only check that device size is divisable by number of data devices if no takeover/reshape! */
+	} else if (!is_divisible_by_data_devs(rs))
 		return ti_error_einval(rs->ti, "Target length not divisible by number of data devices");
-
 
 	mutex_lock(&mddev->reconfig_mutex);
 	mddev->ro = 0;
