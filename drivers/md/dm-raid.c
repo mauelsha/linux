@@ -204,7 +204,7 @@ static bool is_raid456(struct raid_set *rs)
 	return __in_range(rs->md.level, 4, 6);
 }
 
-/* Return true, if raid set in @rs is raid0 */
+/* Return true, if raid set in @rs is striped raid */
 static bool is_striped(struct raid_set *rs)
 {
 	return is_raid0(rs) || is_raid456(rs);
@@ -404,7 +404,8 @@ static int raid_is_congested(struct dm_target_callbacks *cb, int bits)
 	return md_raid5_congested(&rs->md, bits);
 }
 
-/* For out-of_place reshape, we need free space at the beginning of each RAID disk
+/*
+ * For out-of_place reshape, we need free space at the beginning of each RAID disk
  * and at the end.
  * Because growing reshapes of a RAID array are more likely than shrinking ones.
  * return 2/3 of new chunks for growing
@@ -721,6 +722,7 @@ static int raid_takeover(struct raid_set *rs, const char *raid_level_name)
 	/* HM FIXME: REMOVME: devel logging */
 	dump_mddev(mddev, "before takeover");
 #endif
+DMINFO("%s %d raid_type->name=%s", __func__, __LINE__, rs->raid_type->name);
 	mutex_lock(&mddev->reconfig_mutex);
 	set_bit(MD_UPDATE_SB_FLAGS, &mddev->flags);
 	r = md_takeover(mddev, raid_level_name);
@@ -732,6 +734,7 @@ static int raid_takeover(struct raid_set *rs, const char *raid_level_name)
 	/* Set new raid type after successfull takeover */
 	rs->raid_type = get_raid_type_by_ll(mddev->new_level, mddev->new_layout);
 	BUG_ON(!rs->raid_type);
+DMINFO("%s %d raid_type->name=%s", __func__, __LINE__, rs->raid_type->name);
 
 #if 1
 	/* HM FIXME: REMOVME: devel logging */
@@ -784,12 +787,11 @@ static int rs_takeover_or_reshape_or_resize(struct raid_set *rs)
 	if (rs_takeover_requested(rs)) {
 		int d;
 		bool raid6_down_to_raid5 = mddev->level == 6 && mddev->new_level == 5;
-		bool raid5_down_to_raid0 = mddev->level == 5 && !mddev->new_level;
-
-		bool raid1_down_to_raid0 = mddev->level == 1 && !mddev->new_level;
+		bool raid5_down_to_raid0 = mddev->level == 5 && mddev->new_level == 0;
 		bool raid5_down_to_raid1 = mddev->level == 5 && mddev->new_level == 1;
-		bool raid1_up_to_raid5 = mddev->level == 1 && mddev->new_level == 5;
-		char raid_level_name[8];
+		bool raid1_down_to_raid0 = mddev->level == 1 && mddev->new_level == 0;
+		bool raid1_up_to_raid5   = mddev->level == 1 && mddev->new_level == 5;
+		char raid_level_name[16];
 
 		r = get_raid_level_name(rs->raid_type, raid_level_name, sizeof(raid_level_name));
 		BUG_ON(r);
@@ -818,9 +820,9 @@ static int rs_takeover_or_reshape_or_resize(struct raid_set *rs)
 			mddev_suspend(mddev);
 
 			/*
-			 * md's raid0_takeover_raid45 needs degraded
-			 * to be set, the bitmap disabled and the
-			 * parity disk removed
+			 * md's raid0_takeover_raid45 requires the
+			 * set to be degraded, the bitmap disabled
+			 * and the parity disk removed
 			 */
 			mutex_lock(&mddev->reconfig_mutex);
 			mddev->degraded = 1;
@@ -867,13 +869,13 @@ static int rs_takeover_or_reshape_or_resize(struct raid_set *rs)
 			mutex_unlock(&mddev->reconfig_mutex);
 		}
 
-		/* Resume on up conversions if suspended before calling the md takeover function */
+		/* Resume on down conversions if suspended before calling the md takeover function */
 		if (delta_disks < 0 && mddev->suspended)
 			mddev_resume(mddev);
 
 		r = raid_takeover(rs, raid_level_name);
 
-		/* Resume on down conversions if suspended after calling the md takeover function */
+		/* Resume on up conversions if suspended after calling the md takeover function */
 		if (mddev->suspended)
 			mddev_resume(mddev);
 
@@ -1070,8 +1072,15 @@ static int validate_raid_redundancy(struct raid_set *rs)
 	unsigned i = 0, rebuild_cnt = 0;
 	unsigned rebuilds_per_group = 0, copies;
 	unsigned group_size, last_group_start;
+	struct raid_type *raid_type;
 	struct mddev *mddev = &rs->md;
 	struct md_rdev *rdev;
+
+#if 1
+	/* Set new raid type after successfull takeover */
+	raid_type = get_raid_type_by_ll(mddev->new_level, mddev->new_layout);
+	BUG_ON(!raid_type);
+#endif
 
 	rdev_for_each(rdev, mddev) {
 		raid_disks++;
@@ -1079,21 +1088,31 @@ static int validate_raid_redundancy(struct raid_set *rs)
 		    !rdev->sb_page)
 			rebuild_cnt++;
 	}
+DMINFO("%s %d raid_type->name=%s rs->raid_type->name=%s raid_disks=%d rebuild_cnt=%u", __func__, __LINE__, raid_type->name, rs->raid_type->name, raid_disks, rebuild_cnt);
 
 	switch (mddev->level) {
 	case 0:
+{
+DMINFO("%s %d", __func__, __LINE__);
 		if (rebuild_cnt > 1)
 			goto too_many;
+}
 		break;
 	case 1:
 		if (rebuild_cnt >= raid_disks)
+{
+DMINFO("%s %d", __func__, __LINE__);
 			goto too_many;
+}
 		break;
 	case 4:
 	case 5:
 	case 6:
-		if (rebuild_cnt > rs->raid_type->parity_devs)
+		if (rebuild_cnt > raid_type->parity_devs)
+{
+DMINFO("%s %d", __func__, __LINE__);
 			goto too_many;
+}
 		break;
 	case 10:
 		copies = raid10_md_layout_to_copies(rs->md.layout);
@@ -1155,6 +1174,7 @@ static int validate_raid_redundancy(struct raid_set *rs)
 
 		break;
 	default:
+DMINFO("%s %d", __func__, __LINE__);
 		if (rebuild_cnt)
 			return -EINVAL;
 	}
@@ -1165,6 +1185,7 @@ static int validate_raid_redundancy(struct raid_set *rs)
 	return 0;
 
 too_many:
+DMINFO("%s %d", __func__, __LINE__);
 	return -EINVAL;
 }
 
@@ -1704,6 +1725,10 @@ static int super_load(struct raid_set *rs, struct md_rdev *rdev, struct md_rdev 
 		rs_set_new(rs);
 		super_sync(mddev, rdev);
 
+		/*
+		 * Set dm-raid private flag to indicate first use of device.
+		 * Will be reset before running the array.
+		 */
 		set_bit(FirstUse, &rdev->flags);
 
 		/* Force writing of superblocks to disk */
@@ -1998,7 +2023,7 @@ static int load_and_analyse_superblocks(struct raid_set *rs)
 	/* If !freshest then no valid superblock found -> new RAID set to construct. */
 	freshest = superblocks_load(rs);
 	if (!freshest) {
-		rs->md.dev_sectors = rs->rds[0].rdev.sectors;
+		mddev->dev_sectors = rs->rds[0].rdev.sectors;
 		return -ENODATA;
 	}
 
@@ -2183,13 +2208,13 @@ static int rs_run(struct raid_set *rs)
 	} else if (r < 0)
 		return ti_error_einval(rs->ti, "Superblock validation failed!");
 
-	if (!is_divisible_by_data_devs(rs))
+	if (rs_conversion_requested(rs)) {
+		/* Now that we have any existing superblock data at hand, check for invalid ctr flags passed in */
+		if (rs->flags & (DM_RAID_SYNC|DM_RAID_NOSYNC))
+			return ti_error_einval(rs->ti, "sync/nosync prohibited on takeover/reshape/resize request");
+	/* Only check that device size is divisable by number of data devices if no takeover/reshape! */
+	} else if (!is_divisible_by_data_devs(rs))
 		return ti_error_einval(rs->ti, "Target length not divisible by number of data devices");
-
-	/* Now that we have any existing superblock data at hand, check for invalid ctr flags passed in */
-	if (rs_conversion_requested(rs) &&
-	    (rs->flags & (DM_RAID_SYNC|DM_RAID_NOSYNC)))
-		return ti_error_einval(rs->ti, "sync/nosync prohibited on takeover/reshape/resize request");
 
 	mutex_lock(&mddev->reconfig_mutex);
 	mddev->ro = 0;
