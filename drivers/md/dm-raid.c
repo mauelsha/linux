@@ -137,9 +137,11 @@ static struct raid_type *get_raid_type_by_ll(const int level, const int layout)
 	struct raid_type *rt = raid_types;
 
 	for (i = 0; i < ARRAY_SIZE(raid_types); i++, rt++)
-		if (rt->level == level &&
-		    rt->algorithm == layout)
-			return rt;
+		if (rt->level == level) {
+			if (rt->level == 10 ||
+			    rt->algorithm == layout)
+				return rt;
+		}
 
 	return NULL;
 }
