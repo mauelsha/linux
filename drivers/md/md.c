@@ -4075,9 +4075,13 @@ size_show(struct mddev *mddev, char *page)
 static int update_size(struct mddev *mddev, sector_t num_sectors);
 
 <<<<<<< master
+<<<<<<< master
 /* API to expose size_store() to dm-raid target */
 =======
 >>>>>>> HEAD~77
+=======
+/* API to expose size_store() to dm-raid target */
+>>>>>>> HEAD~70
 int md_resize(struct mddev *mddev, sector_t sectors)
 {
 	int err;
@@ -4109,9 +4113,13 @@ int md_resize(struct mddev *mddev, sector_t sectors)
 EXPORT_SYMBOL_GPL(md_resize);
 
 <<<<<<< master
+<<<<<<< master
 /* Compatibility wrapper around md_resize() to keep md internal inbterface */
 =======
 >>>>>>> HEAD~77
+=======
+/* Compatibility wrapper around md_resize() to keep md internal inbterface */
+>>>>>>> HEAD~70
 static ssize_t
 size_store(struct mddev *mddev, const char *buf, size_t len)
 {
