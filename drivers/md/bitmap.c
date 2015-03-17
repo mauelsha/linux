@@ -501,6 +501,7 @@ static int bitmap_new_disk_sb(struct bitmap *bitmap)
 	sb->version = cpu_to_le32(BITMAP_MAJOR_HI);
 
 	chunksize = bitmap->mddev->bitmap_info.chunksize;
+pr_alert("%s %u chunksize=%lu", __func__, __LINE__, chunksize);
 	BUG_ON(!chunksize);
 	if (!is_power_of_2(chunksize)) {
 		kunmap_atomic(sb);
@@ -1963,7 +1964,7 @@ int bitmap_resize(struct bitmap *bitmap, sector_t blocks,
 	long pages;
 	struct bitmap_page *new_bp;
 
-pr_alert("%s %u chunsksize=%u", __func__, __LINE__, chunksize);
+pr_alert("%s %u chunksize=%u", __func__, __LINE__, chunksize);
 	if (chunksize == 0) {
 		/* If there is enough space, leave the chunk size unchanged,
 		 * else increase by factor of two until there is enough space.
