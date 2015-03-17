@@ -505,7 +505,6 @@ static int bitmap_new_disk_sb(struct bitmap *bitmap)
 	sb->version = cpu_to_le32(BITMAP_MAJOR_HI);
 
 	chunksize = bitmap->mddev->bitmap_info.chunksize;
-pr_alert("%s %u chunksize=%lu", __func__, __LINE__, chunksize);
 	BUG_ON(!chunksize);
 	if (!is_power_of_2(chunksize)) {
 		kunmap_atomic(sb);
@@ -1094,10 +1093,7 @@ static int bitmap_init_from_disk(struct bitmap *bitmap, sector_t start)
 					index + node_offset, count);
 
 			if (ret)
-{
-pr_alert("%s %u offset=%llu, index=%lu count=%d\n", __func__, __LINE__, bitmap->mddev->bitmap_info.offset, index, count);
 				goto err;
-}
 
 			oldindex = index;
 
@@ -1115,10 +1111,7 @@ pr_alert("%s %u offset=%llu, index=%lu count=%d\n", __func__, __LINE__, bitmap->
 				ret = -EIO;
 				if (test_bit(BITMAP_WRITE_ERROR,
 					     &bitmap->flags))
-{
-pr_alert("%s %u\n", __func__, __LINE__);
 					goto err;
-}
 			}
 		}
 		paddr = kmap_atomic(page);
@@ -1970,7 +1963,6 @@ int bitmap_resize(struct bitmap *bitmap, sector_t blocks,
 	long pages;
 	struct bitmap_page *new_bp;
 
-pr_alert("%s %u chunksize=%u", __func__, __LINE__, chunksize);
 	if (chunksize == 0) {
 		/* If there is enough space, leave the chunk size unchanged,
 		 * else increase by factor of two until there is enough space.
@@ -1998,7 +1990,6 @@ pr_alert("%s %u chunksize=%u", __func__, __LINE__, chunksize);
 			if (!bitmap->mddev->bitmap_info.external)
 				bytes += sizeof(bitmap_super_t);
 		} while (bytes > (space << 9));
-pr_alert("%s %u bytes=%ld space=%ld", __func__, __LINE__, bytes, space);
 	} else
 		chunkshift = ffz(~chunksize) - BITMAP_BLOCK_SHIFT;
 
@@ -2040,7 +2031,6 @@ pr_alert("%s %u bytes=%ld space=%ld", __func__, __LINE__, bytes, space);
 	bitmap->counts.missing_pages = pages;
 	bitmap->counts.chunkshift = chunkshift;
 	bitmap->counts.chunks = chunks;
-pr_alert("%s %u chunsksize=%u chunkshift=%u chunks=%lu\n", __func__, __LINE__, chunksize, chunkshift, chunks);
 	bitmap->mddev->bitmap_info.chunksize = 1 << (chunkshift +
 						     BITMAP_BLOCK_SHIFT);
 
