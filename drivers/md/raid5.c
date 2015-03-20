@@ -7447,6 +7447,8 @@ static int raid5_start_reshape(struct mddev *mddev)
 	write_seqcount_end(&conf->gen_lock);
 	spin_unlock_irq(&conf->device_lock);
 
+pr_alert("%s %u conf->reshape_progress=%llu\n", __func__, __LINE__, conf->reshape_progress);
+
 	/* Now make sure any requests that proceeded on the assumption
 	 * the reshape wasn't running - like Discard or Read - have
 	 * completed.

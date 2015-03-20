@@ -2983,7 +2983,12 @@ static void raid1_free(struct mddev *mddev, void *priv)
 {
 	struct r1conf *conf = priv;
 
-	mempool_destroy(conf->r1bio_pool);
+	if (!conf)
+		return;
+
+	if (conf->r1bio_pool)
+		mempool_destroy(conf->r1bio_pool);
+
 	kfree(conf->mirrors);
 	safe_put_page(conf->tmppage);
 	kfree(conf->poolinfo);
