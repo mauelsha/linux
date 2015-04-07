@@ -5398,9 +5398,11 @@ static void __md_stop_writes(struct mddev *mddev)
 	bitmap_flush(mddev);
 	md_super_wait(mddev);
 
+pr_alert("%s %u mddev->ro=%d mddev->in_sync=%d mddev->flags=%lX", __func__, __LINE__, mddev->ro, mddev->in_sync, mddev->flags);
 	if (mddev->ro == 0 &&
 	    (!mddev->in_sync || (mddev->flags & MD_UPDATE_SB_FLAGS))) {
 		/* mark array as shutdown cleanly */
+pr_alert("%s %u", __func__, __LINE__);
 		mddev->in_sync = 1;
 		md_update_sb(mddev, 1);
 	}

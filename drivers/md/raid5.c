@@ -594,6 +594,7 @@ static int calc_degraded(struct r5conf *conf)
 	int degraded, degraded2;
 	int i;
 
+pr_alert("%s %u", __func__, __LINE__);
 	rcu_read_lock();
 	degraded = 0;
 	for (i = 0; i < conf->previous_raid_disks; i++) {
@@ -601,7 +602,11 @@ static int calc_degraded(struct r5conf *conf)
 		if (rdev && test_bit(Faulty, &rdev->flags))
 			rdev = rcu_dereference(conf->disks[i].replacement);
 		if (!rdev || test_bit(Faulty, &rdev->flags))
+{
+pr_alert("%s %u degraded++ !!!", __func__, __LINE__);
+
 			degraded++;
+}
 		else if (test_bit(In_sync, &rdev->flags))
 			;
 		else
@@ -619,7 +624,10 @@ static int calc_degraded(struct r5conf *conf)
 	}
 	rcu_read_unlock();
 	if (conf->raid_disks == conf->previous_raid_disks)
+{
+pr_alert("%s %u returning degraded=%d", __func__, __LINE__, degraded);
 		return degraded;
+}
 	rcu_read_lock();
 	degraded2 = 0;
 	for (i = 0; i < conf->raid_disks; i++) {
@@ -627,7 +635,10 @@ static int calc_degraded(struct r5conf *conf)
 		if (rdev && test_bit(Faulty, &rdev->flags))
 			rdev = rcu_dereference(conf->disks[i].replacement);
 		if (!rdev || test_bit(Faulty, &rdev->flags))
+{
+pr_alert("%s %u degraded2++ !!!", __func__, __LINE__);
 			degraded2++;
+}
 		else if (test_bit(In_sync, &rdev->flags))
 			;
 		else
@@ -6843,8 +6854,7 @@ static int run(struct mddev *mddev)
 	mddev->dev_sectors &= ~(mddev->chunk_sectors - 1);
 	mddev->resync_max_sectors = mddev->dev_sectors;
 
-printk(KERN_WARNING "%s %u degraded=%u dirty_parity_disks=%u conf->raid_disks=%u conf->previous_raid_disks=%u max_degraded=%u ok_start_degraded=%u\n",
-		    __func__, __LINE__, mddev->degraded, dirty_parity_disks, conf->raid_disks, conf->previous_raid_disks, conf->max_degraded, mddev->ok_start_degraded);
+printk(KERN_WARNING "%s %u degraded=%u dirty_parity_disks=%u conf->raid_disks=%u conf->previous_raid_disks=%u max_degraded=%u ok_start_degraded=%u\n\n", __func__, __LINE__, mddev->degraded, dirty_parity_disks, conf->raid_disks, conf->previous_raid_disks, conf->max_degraded, mddev->ok_start_degraded);
 	if (mddev->degraded > dirty_parity_disks &&
 	    mddev->recovery_cp != MaxSector) {
 		if (mddev->ok_start_degraded)
@@ -7148,6 +7158,7 @@ static int raid5_add_disk(struct mddev *mddev, struct md_rdev *rdev)
 	int first = 0;
 	int last = conf->raid_disks - 1;
 
+pr_alert("%s %u", __func__, __LINE__);
 	if (mddev->recovery_disabled == conf->recovery_disabled)
 		return -EBUSY;
 
@@ -7309,7 +7320,10 @@ static int raid5_start_reshape(struct mddev *mddev)
 		return -ENOSPC;
 
 	if (has_failed(conf))
+{
+pr_alert("%s %u has_failed()!\n", __func__, __LINE__);
 		return -EINVAL;
+}
 
 	rdev_for_each(rdev, mddev) {
 		if (!test_bit(In_sync, &rdev->flags)
@@ -7321,7 +7335,10 @@ static int raid5_start_reshape(struct mddev *mddev)
 		/* Not enough devices even to make a degraded array
 		 * of that size
 		 */
+{
+pr_alert("%s %u not enough devices! spares=%u\n", __func__, __LINE__, spares);
 		return -EINVAL;
+}
 
 	/* Refuse to reduce size of the array.  Any reductions in
 	 * array size must be through explicit setting of array_size
@@ -7356,7 +7373,7 @@ static int raid5_start_reshape(struct mddev *mddev)
 	write_seqcount_end(&conf->gen_lock);
 	spin_unlock_irq(&conf->device_lock);
 
-pr_alert("%s %u conf->reshape_progress=%llu\n", __func__, __LINE__, conf->reshape_progress);
+pr_alert("%s %u conf->reshape_progress=%llu\n", __func__, __LINE__, (long long unsigned) conf->reshape_progress);
 
 	/* Now make sure any requests that proceeded on the assumption
 	 * the reshape wasn't running - like Discard or Read - have
