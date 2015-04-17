@@ -615,10 +615,7 @@ static int calc_degraded(struct r5conf *conf)
 			 * be in-sync.
 			 */
 			if (conf->raid_disks >= conf->previous_raid_disks)
-{
 				degraded++;
-pr_alert("%s %u degraded++ !!!", __func__, __LINE__);
-}
 	}
 	rcu_read_unlock();
 	if (conf->raid_disks == conf->previous_raid_disks)
