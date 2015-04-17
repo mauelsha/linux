@@ -5398,11 +5398,11 @@ static void __md_stop_writes(struct mddev *mddev)
 	bitmap_flush(mddev);
 	md_super_wait(mddev);
 
-pr_alert("%s %u mddev->ro=%d mddev->in_sync=%d mddev->flags=%lX", __func__, __LINE__, mddev->ro, mddev->in_sync, mddev->flags);
+pr_alert("%s %u mddev->ro=%d mddev->in_sync=%d mddev->flags=%lX\n", __func__, __LINE__, mddev->ro, mddev->in_sync, mddev->flags);
 	if (mddev->ro == 0 &&
 	    (!mddev->in_sync || (mddev->flags & MD_UPDATE_SB_FLAGS))) {
 		/* mark array as shutdown cleanly */
-pr_alert("%s %u", __func__, __LINE__);
+pr_alert("%s %u\n", __func__, __LINE__);
 		mddev->in_sync = 1;
 		md_update_sb(mddev, 1);
 	}
@@ -8393,8 +8393,15 @@ void md_reap_sync_thread(struct mddev *mddev)
 	set_bit(MD_RECOVERY_NEEDED, &mddev->recovery);
 	sysfs_notify_dirent_safe(mddev->sysfs_action);
 	md_new_event(mddev);
+#if 1
 	if (mddev->event_work.func)
 		queue_work(md_misc_wq, &mddev->event_work);
+#else
+	if (mddev->event_work.func) {
+		queue_work(md_misc_wq, &mddev->event_work);
+		flush_workqueue(md_misc_wq);
+	}
+#endif
 }
 EXPORT_SYMBOL(md_reap_sync_thread);
 

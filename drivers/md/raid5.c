@@ -594,7 +594,7 @@ static int calc_degraded(struct r5conf *conf)
 	int degraded, degraded2;
 	int i;
 
-pr_alert("%s %u", __func__, __LINE__);
+pr_alert("%s %u\n", __func__, __LINE__);
 	rcu_read_lock();
 	degraded = 0;
 	for (i = 0; i < conf->previous_raid_disks; i++) {
@@ -603,7 +603,7 @@ pr_alert("%s %u", __func__, __LINE__);
 			rdev = rcu_dereference(conf->disks[i].replacement);
 		if (!rdev || test_bit(Faulty, &rdev->flags))
 {
-pr_alert("%s %u degraded++ !!!", __func__, __LINE__);
+pr_alert("%s %u degraded++ !!!\n", __func__, __LINE__);
 
 			degraded++;
 }
@@ -622,13 +622,13 @@ pr_alert("%s %u degraded++ !!!", __func__, __LINE__);
 			if (conf->raid_disks >= conf->previous_raid_disks)
 {
 				degraded++;
-pr_alert("%s %u degraded++ !!!", __func__, __LINE__);
+pr_alert("%s %u degraded++ !!!\n", __func__, __LINE__);
 }
 	}
 	rcu_read_unlock();
 	if (conf->raid_disks == conf->previous_raid_disks)
 {
-pr_alert("%s %u returning degraded=%d", __func__, __LINE__, degraded);
+pr_alert("%s %u returning degraded=%d\n", __func__, __LINE__, degraded);
 		return degraded;
 }
 	rcu_read_lock();
@@ -639,7 +639,7 @@ pr_alert("%s %u returning degraded=%d", __func__, __LINE__, degraded);
 			rdev = rcu_dereference(conf->disks[i].replacement);
 		if (!rdev || test_bit(Faulty, &rdev->flags))
 {
-pr_alert("%s %u degraded2++ !!!", __func__, __LINE__);
+pr_alert("%s %u degraded2++ !!!\n", __func__, __LINE__);
 			degraded2++;
 }
 		else if (test_bit(In_sync, &rdev->flags))
@@ -7161,7 +7161,7 @@ static int raid5_add_disk(struct mddev *mddev, struct md_rdev *rdev)
 	int first = 0;
 	int last = conf->raid_disks - 1;
 
-pr_alert("%s %u", __func__, __LINE__);
+pr_alert("%s %u\n", __func__, __LINE__);
 	if (mddev->recovery_disabled == conf->recovery_disabled)
 		return -EBUSY;
 
