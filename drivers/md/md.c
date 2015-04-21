@@ -5398,6 +5398,7 @@ static void __md_stop_writes(struct mddev *mddev)
 	bitmap_flush(mddev);
 	md_super_wait(mddev);
 
+	smp_rmb();
 pr_alert("%s %u mddev->ro=%d mddev->in_sync=%d mddev->flags=%lX\n", __func__, __LINE__, mddev->ro, mddev->in_sync, mddev->flags);
 	if (mddev->ro == 0 &&
 	    (!mddev->in_sync || (mddev->flags & MD_UPDATE_SB_FLAGS))) {
