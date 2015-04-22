@@ -188,7 +188,11 @@ static int create_strip_zones(struct mddev *mddev, struct r0conf **private_conf)
 		}
 		dev[j] = rdev1;
 
+<<<<<<< master
 		if (mddev->queue)
+=======
+		if (mddev->gendisk)
+>>>>>>> HEAD~30
 			disk_stack_limits(mddev->gendisk, rdev1->bdev,
 					  rdev1->data_offset << 9);
 
