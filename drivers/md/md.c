@@ -8394,15 +8394,8 @@ void md_reap_sync_thread(struct mddev *mddev)
 	set_bit(MD_RECOVERY_NEEDED, &mddev->recovery);
 	sysfs_notify_dirent_safe(mddev->sysfs_action);
 	md_new_event(mddev);
-#if 1
 	if (mddev->event_work.func)
 		queue_work(md_misc_wq, &mddev->event_work);
-#else
-	if (mddev->event_work.func) {
-		queue_work(md_misc_wq, &mddev->event_work);
-		flush_workqueue(md_misc_wq);
-	}
-#endif
 }
 EXPORT_SYMBOL(md_reap_sync_thread);
 
