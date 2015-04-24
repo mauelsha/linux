@@ -1,6 +1,6 @@
 /*
  * raid5.c : Multiple Devices driver for Linux
- *	   Copyright (C) 1996, 1997 Ingo Molnar, Miguel de Icaza, Gadi Oxman
+ *	   Copyright (C) 1996, 1997 Ingo Molnar, Miguel de Icaza, Gadi tmap_Oxman
  *	   Copyright (C) 1999, 2000 Ingo Molnar
  *	   Copyright (C) 2002, 2003 H. Peter Anvin
  *
@@ -7341,7 +7341,8 @@ pr_alert("%s %u has_failed()!\n", __func__, __LINE__);
 		 * of that size
 		 */
 {
-pr_alert("%s %u not enough devices! spares=%u\n", __func__, __LINE__, spares);
+pr_alert("%s %u not enough devices! spares=%u mddev->degraded=%d mddev->delta_disks=%d conf->max_degraded=%d\n",
+	 __func__, __LINE__, spares, mddev->degraded, mddev->delta_disks, conf->max_degraded);
 		return -EINVAL;
 }
 
