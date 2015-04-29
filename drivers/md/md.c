@@ -3499,6 +3499,7 @@ level_store(struct mddev *mddev, const char *buf, size_t len)
 <<<<<<< master
 <<<<<<< master
 <<<<<<< master
+<<<<<<< master
 	if (mddev->queue)
 		blk_set_stacking_limits(&mddev->queue->limits);
 =======
@@ -3523,6 +3524,9 @@ level_store(struct mddev *mddev, const char *buf, size_t len)
 >>>>>>> HEAD~55
 	if (mddev->queue)
 		blk_set_stacking_limits(&mddev->queue->limits);
+=======
+	blk_set_stacking_limits(&mddev->queue->limits);
+>>>>>>> HEAD~22
 	pers->run(mddev);
 	set_bit(MD_CHANGE_DEVS, &mddev->flags);
 	mddev_resume(mddev);
@@ -3535,15 +3539,6 @@ out_unlock:
 	mddev_unlock(mddev);
 	return rv;
 }
-
-/* API to expose level_store() to dm-raid target */
-int md_takeover(struct mddev *mddev, const char *buf)
-{
-	ssize_t r = level_store(mddev, buf, strlen(buf));
-
-	return r < 0 ? (int) r : 0;
-}
-EXPORT_SYMBOL_GPL(md_takeover);
 
 static struct md_sysfs_entry md_level =
 __ATTR(level, S_IRUGO|S_IWUSR, level_show, level_store);
@@ -4090,6 +4085,7 @@ static int update_size(struct mddev *mddev, sector_t num_sectors);
 <<<<<<< master
 <<<<<<< master
 <<<<<<< master
+<<<<<<< master
 /* API to expose size_store() to dm-raid target */
 =======
 >>>>>>> HEAD~77
@@ -4102,13 +4098,20 @@ static int update_size(struct mddev *mddev, sector_t num_sectors);
 /* API to expose size_store() to dm-raid target */
 >>>>>>> HEAD~54
 int md_resize(struct mddev *mddev, sector_t sectors)
+=======
+static ssize_t
+size_store(struct mddev *mddev, const char *buf, size_t len)
+>>>>>>> HEAD~22
 {
-	int err;
-
 	/* If array is inactive, we can reduce the component size, but
 	 * not increase it (except from 0).
 	 * If array is active, we can try an on-line resize
 	 */
+	sector_t sectors;
+	int err = strict_blocks_to_sectors(buf, &sectors);
+
+	if (err < 0)
+		return err;
 	err = mddev_lock(mddev);
 	if (err)
 		return err;
@@ -4127,6 +4130,7 @@ int md_resize(struct mddev *mddev, sector_t sectors)
 			err = -ENOSPC;
 	}
 	mddev_unlock(mddev);
+<<<<<<< master
 	return err;
 }
 EXPORT_SYMBOL_GPL(md_resize);
@@ -4156,6 +4160,9 @@ size_store(struct mddev *mddev, const char *buf, size_t len)
 		err = md_resize(mddev, dev_sectors);
 
 	return err ? (ssize_t) err : len;
+=======
+	return err ? err : len;
+>>>>>>> HEAD~22
 }
 
 static struct md_sysfs_entry md_size =
@@ -5398,12 +5405,9 @@ static void __md_stop_writes(struct mddev *mddev)
 	bitmap_flush(mddev);
 	md_super_wait(mddev);
 
-	smp_rmb();
-pr_alert("%s %u mddev->ro=%d mddev->in_sync=%d mddev->flags=%lX\n", __func__, __LINE__, mddev->ro, mddev->in_sync, mddev->flags);
 	if (mddev->ro == 0 &&
 	    (!mddev->in_sync || (mddev->flags & MD_UPDATE_SB_FLAGS))) {
 		/* mark array as shutdown cleanly */
-pr_alert("%s %u\n", __func__, __LINE__);
 		mddev->in_sync = 1;
 		md_update_sb(mddev, 1);
 	}
