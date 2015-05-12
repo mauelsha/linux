@@ -315,10 +315,14 @@ void mddev_suspend(struct mddev *mddev)
 	BUG_ON(mddev->suspended);
 	mddev->suspended = 1;
 	synchronize_rcu();
+pr_alert("%s %u\n", __func__, __LINE__);
 	wait_event(mddev->sb_wait, atomic_read(&mddev->active_io) == 0);
+pr_alert("%s %u\n", __func__, __LINE__);
 	mddev->pers->quiesce(mddev, 1);
+pr_alert("%s %u\n", __func__, __LINE__);
 
 	del_timer_sync(&mddev->safemode_timer);
+pr_alert("%s %u\n", __func__, __LINE__);
 }
 EXPORT_SYMBOL_GPL(mddev_suspend);
 
@@ -5403,16 +5407,20 @@ static void __md_stop_writes(struct mddev *mddev)
 	del_timer_sync(&mddev->safemode_timer);
 
 	bitmap_flush(mddev);
+pr_alert("%s %u\n", __func__, __LINE__);
 	md_super_wait(mddev);
+pr_alert("%s %u\n", __func__, __LINE__);
 
 	if (mddev->ro == 0 &&
 	    (!mddev->in_sync || (mddev->flags & MD_UPDATE_SB_FLAGS))) {
 		/* mark array as shutdown cleanly */
 		mddev->in_sync = 1;
 		md_update_sb(mddev, 1);
+pr_alert("%s %u\n", __func__, __LINE__);
 	}
 	if (mddev_is_clustered(mddev))
 		md_cluster_ops->metadata_update_finish(mddev);
+pr_alert("%s %u\n", __func__, __LINE__);
 }
 
 void md_stop_writes(struct mddev *mddev)
