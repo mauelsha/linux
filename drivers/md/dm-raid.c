@@ -1308,13 +1308,23 @@ static int rs_setup_reshape(struct raid_set *rs)
 	/*
 	 * Adjust array size:
 	 *
-	 * - has to shrink before starting the disk removal reshape
+	 * - in case of adding disks, array size has
+	 *   to grow after the disk adding reshape,
+	 *   which'll hapen in the event handler;
+	 *   reshape will happen forward, so space has to
+	 *   be available at the beginning of each disk
 	 *
-	 * - in case of growing, array size has to
-	 *   change after the disk adding reshape,
-	 *   which'll hapen in the event handler
+	 * - in case of removing disks, array size
+	 *   has to shrink before starting the reshape,
+	 *   which'll happen here;
+	 *   reshape will happen backward, so space has to
+	 *   be available at the end of each disk
+	 *
 	 * - data_offset and new_data_offset are
-	 *   adjusted for out of place reshaping
+	 *   adjusted for afreentioned out of place
+	 *   reshaping based on userspace passing in
+	 *   the "data_offset <sectors>" key/value
+	 *   pair via te constructor
 	 */
 	if (mddev->delta_disks < 0) {
 #if DEVEL_OUTPUT
@@ -1322,7 +1332,9 @@ static int rs_setup_reshape(struct raid_set *rs)
 		DMINFO("%s %u shrink mddev->delta_disks=%d", __func__, __LINE__, mddev->delta_disks);
 #endif
 		r = rs_set_dev_and_array_sectors(rs);
+#if DEVEL_OUTPUT
 		WARN_ON(r);
+#endif
 		mddev->reshape_backwards = 1; /* removing disk(s) -> forward reshape */
 
 	} else if (mddev->delta_disks > 0) {
@@ -1352,15 +1364,22 @@ static int rs_setup_reshape(struct raid_set *rs)
 		DMINFO("%s %u layout change from=%d to=%d", __func__, __LINE__, mddev->layout, mddev->new_layout);
 #endif
 		/*
-		 * Keeping number of disks and do layout change ->
+		 * Takeover:
+		 *
+		 * keeping number of disks and do layout change ->
 		 *
 		 * toggle reshape_backward depending on data_offset:
 		 *
 		 * - free space upfront -> reshape forward
+		 *
 		 * - free space at the end -> reshape backward
 		 *
+		 *
 		 * This utilizes free reshape space avoiding the need
-		 * for userspace to move (parts of) LV segments
+		 * for userspace to move (parts of) LV segments in
+		 * case of takeover (for disk adding/removing reshape
+		 * space has to be at the proper address;
+		 * add: begin / remove: end)
 		 *
 		 */
 		mddev->reshape_backwards = rs->dev[0].rdev.data_offset ? 0 : 1;
@@ -1371,13 +1390,6 @@ static int rs_setup_reshape(struct raid_set *rs)
 	rdev_for_each(rdev, mddev)
 		DMINFO("%s %u rdev[%d]->flags=%lu", __func__, __LINE__, rdev->raid_disk, rdev->flags);
 #endif
-
-	return r;
-
-reset:
-	rs_set_cur(rs);
-	mddev->delta_disks = 0;
-	mddev->reshape_backwards = 0;
 
 	return r;
 }
@@ -1830,9 +1842,10 @@ too_many:
  * Argument definitions
  *    <chunk_size>			The number of sectors per disk that
  *                                      will form the "stripe"
- *    [data_offset]			Reshape:
+ *    [data_offset <sectors>]		Reshape:
  *					request data offset change on each raid disk image;
- *					used to pass new offset in after uspace relocated space
+ *					used to pass new offset in after uspace (al|re)located
+ *					space at the begin/end of each data disk
  *    [ignore_discard]                  Ignore any discards;
  *                                      can be used in cases of bogus TRIM/UNMAP
  *                                      support on raid set legs (e.g. discard_zeroes_data
@@ -2938,7 +2951,10 @@ static int rs_run(struct raid_set *rs)
 
 	rs_config_restore(rs, &rs_layout);
 
-dump_mddev(mddev, "After load_and_analyse_superblocks()");
+#if DEVEL_OUTPUT
+	/* HM FIXME REMOVEME: devel */
+	dump_mddev(mddev, "After load_and_analyse_superblocks()");
+#endif
 
 	if (test_bit(MD_ARRAY_FIRST_USE, &mddev->flags)) {
 		/*
@@ -2970,7 +2986,7 @@ dump_mddev(mddev, "After load_and_analyse_superblocks()");
 	dump_mddev(mddev, "Before rs_is_reshaping()");
 #endif
 
-	/* Check for interrupted reshape first */
+	/* Check for interrupted reshape first in order to restart it */
 	if (rs_is_reshaping(rs)) {
 		if (rs->ctr_flags & CTR_FLAGS_ANY_SYNC)
 			return ti_error_einval(rs->ti, "Invalid sync request during reshaping");
@@ -3015,12 +3031,10 @@ dump_mddev(mddev, "After load_and_analyse_superblocks()");
 #endif
 	mddev_lock_nointr(mddev); /* Must be held on calling md_run() */
 	r = md_run(mddev);
-	mddev->in_sync = 0;
-	if (r) {
-		mddev_unlock(mddev);
+	if (r)
 		return r;
-	}
 
+	mddev->in_sync = 0;
 	mddev_suspend(mddev);
 #if DEVEL_OUTPUT
 	/* HM FIXME REMOVEME: devel */

@@ -661,9 +661,6 @@ extern void md_stop_writes(struct mddev *mddev);
 extern int md_rdev_init(struct md_rdev *rdev);
 extern void md_rdev_clear(struct md_rdev *rdev);
 
-extern int md_resize(struct mddev *mddev, sector_t dev_sectors);
-extern int md_takeover(struct mddev *mddev, const char *buf);
-
 extern void mddev_suspend(struct mddev *mddev);
 extern void mddev_resume(struct mddev *mddev);
 extern struct bio *bio_clone_mddev(struct bio *bio, gfp_t gfp_mask,

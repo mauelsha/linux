@@ -199,7 +199,8 @@ static int create_strip_zones(struct mddev *mddev, struct r0conf **private_conf)
 			smallest = rdev1;
 		cnt++;
 
-		if (blk_queue_discard(bdev_get_queue(rdev1->bdev)))
+		if (mddev->queue &&
+		    blk_queue_discard(bdev_get_queue(rdev1->bdev)))
 			discard_supported = true;
 	}
 	if (cnt != mddev->raid_disks) {
@@ -260,14 +261,6 @@ static int create_strip_zones(struct mddev *mddev, struct r0conf **private_conf)
 			 mdname(mddev),
 			 (unsigned long long)smallest->sectors);
 	}
-<<<<<<< HEAD
-
-	if (mddev->queue) {
-		mddev->queue->backing_dev_info.congested_fn = raid0_congested;
-		mddev->queue->backing_dev_info.congested_data = mddev;
-	}
-=======
->>>>>>> master
 
 	/*
 	 * now since we have the hard sector sizes, we can make sure
@@ -477,8 +470,6 @@ static int raid0_run(struct mddev *mddev)
 			(mddev->chunk_sectors << 9) / PAGE_SIZE;
 		if (mddev->queue->backing_dev_info.ra_pages < 2* stripe)
 			mddev->queue->backing_dev_info.ra_pages = 2* stripe;
-
-		blk_queue_merge_bvec(mddev->queue, raid0_mergeable_bvec);
 	}
 
 	dump_zones(mddev);
@@ -492,12 +483,6 @@ static void raid0_free(struct mddev *mddev, void *priv)
 {
 	struct r0conf *conf = priv;
 
-<<<<<<< HEAD
-	if (mddev->queue)
-		blk_sync_queue(mddev->queue); /* the unplug fn references 'conf'*/
-
-=======
->>>>>>> master
 	kfree(conf->strip_zone);
 	kfree(conf->devlist);
 	kfree(conf);
