@@ -83,11 +83,15 @@
  *
  * CHECKSUM_PARTIAL:
  *
- *   This is identical to the case for output below. This may occur on a packet
+ *   A checksum is set up to be offloaded to a device as described in the
+ *   output description for CHECKSUM_PARTIAL. This may occur on a packet
  *   received directly from another Linux OS, e.g., a virtualized Linux kernel
- *   on the same host. The packet can be treated in the same way as
- *   CHECKSUM_UNNECESSARY, except that on output (i.e., forwarding) the
- *   checksum must be filled in by the OS or the hardware.
+ *   on the same host, or it may be set in the input path in GRO or remote
+ *   checksum offload. For the purposes of checksum verification, the checksum
+ *   referred to by skb->csum_start + skb->csum_offset and any preceding
+ *   checksums in the packet are considered verified. Any checksums in the
+ *   packet that are after the checksum being offloaded are not considered to
+ *   be verified.
  *
  * B. Checksumming on output.
  *
@@ -162,10 +166,17 @@ struct nf_conntrack {
 #if IS_ENABLED(CONFIG_BRIDGE_NETFILTER)
 struct nf_bridge_info {
 	atomic_t		use;
+	enum {
+		BRNF_PROTO_UNCHANGED,
+		BRNF_PROTO_8021Q,
+		BRNF_PROTO_PPPOE
+	} orig_proto;
+	bool			pkt_otherhost;
 	unsigned int		mask;
 	struct net_device	*physindev;
 	struct net_device	*physoutdev;
-	unsigned long		data[32 / sizeof(unsigned long)];
+	char			neigh_header[8];
+	__be32			ipv4_daddr;
 };
 #endif
 
@@ -488,7 +499,6 @@ static inline u32 skb_mstamp_us_delta(const struct skb_mstamp *t1,
   *	@napi_id: id of the NAPI struct this skb came from
  *	@secmark: security marking
  *	@mark: Generic packet mark
- *	@dropcount: total number of sk_receive_queue overflows
  *	@vlan_proto: vlan encapsulation protocol
  *	@vlan_tci: vlan tag control information
  *	@inner_protocol: Protocol (encapsulation)
@@ -637,7 +647,6 @@ struct sk_buff {
 #endif
 	union {
 		__u32		mark;
-		__u32		dropcount;
 		__u32		reserved_tailroom;
 	};
 
@@ -765,6 +774,7 @@ bool skb_try_coalesce(struct sk_buff *to, struct sk_buff *from,
 
 struct sk_buff *__alloc_skb(unsigned int size, gfp_t priority, int flags,
 			    int node);
+struct sk_buff *__build_skb(void *data, unsigned int frag_size);
 struct sk_buff *build_skb(void *data, unsigned int frag_size);
 static inline struct sk_buff *alloc_skb(unsigned int size,
 					gfp_t priority)
@@ -866,8 +876,7 @@ unsigned int skb_seq_read(unsigned int consumed, const u8 **data,
 void skb_abort_seq_read(struct skb_seq_state *st);
 
 unsigned int skb_find_text(struct sk_buff *skb, unsigned int from,
-			   unsigned int to, struct ts_config *config,
-			   struct ts_state *state);
+			   unsigned int to, struct ts_config *config);
 
 /*
  * Packet hash types specify the type of hash in skb_set_hash.
@@ -943,6 +952,13 @@ static inline void skb_copy_hash(struct sk_buff *to, const struct sk_buff *from)
 	to->sw_hash = from->sw_hash;
 	to->l4_hash = from->l4_hash;
 };
+
+static inline void skb_sender_cpu_clear(struct sk_buff *skb)
+{
+#ifdef CONFIG_XPS
+	skb->sender_cpu = 0;
+#endif
+}
 
 #ifdef NET_SKBUFF_DATA_USES_OFFSET
 static inline unsigned char *skb_end_pointer(const struct sk_buff *skb)
@@ -2915,7 +2931,10 @@ __sum16 __skb_checksum_complete(struct sk_buff *skb);
 
 static inline int skb_csum_unnecessary(const struct sk_buff *skb)
 {
-	return ((skb->ip_summed & CHECKSUM_UNNECESSARY) || skb->csum_valid);
+	return ((skb->ip_summed == CHECKSUM_UNNECESSARY) ||
+		skb->csum_valid ||
+		(skb->ip_summed == CHECKSUM_PARTIAL &&
+		 skb_checksum_start_offset(skb) >= 0));
 }
 
 /**
@@ -2998,6 +3017,18 @@ static inline bool __skb_checksum_validate_needed(struct sk_buff *skb,
  * in checksum_init.
  */
 #define CHECKSUM_BREAK 76
+
+/* Unset checksum-complete
+ *
+ * Unset checksum complete can be done when packet is being modified
+ * (uncompressed for instance) and checksum-complete value is
+ * invalidated.
+ */
+static inline void skb_checksum_complete_unset(struct sk_buff *skb)
+{
+	if (skb->ip_summed == CHECKSUM_COMPLETE)
+		skb->ip_summed = CHECKSUM_NONE;
+}
 
 /* Validate (init) checksum based on checksum complete.
  *
@@ -3097,15 +3128,28 @@ do {									\
 				       compute_pseudo(skb, proto));	\
 } while (0)
 
+static inline void skb_remcsum_adjust_partial(struct sk_buff *skb, void *ptr,
+					      u16 start, u16 offset)
+{
+	skb->ip_summed = CHECKSUM_PARTIAL;
+	skb->csum_start = ((unsigned char *)ptr + start) - skb->head;
+	skb->csum_offset = offset - start;
+}
+
 /* Update skbuf and packet to reflect the remote checksum offload operation.
  * When called, ptr indicates the starting point for skb->csum when
  * ip_summed is CHECKSUM_COMPLETE. If we need create checksum complete
  * here, skb_postpull_rcsum is done so skb->csum start is ptr.
  */
 static inline void skb_remcsum_process(struct sk_buff *skb, void *ptr,
-				       int start, int offset)
+				       int start, int offset, bool nopartial)
 {
 	__wsum delta;
+
+	if (!nopartial) {
+		skb_remcsum_adjust_partial(skb, ptr, start, offset);
+		return;
+	}
 
 	 if (unlikely(skb->ip_summed != CHECKSUM_COMPLETE)) {
 		__skb_checksum_complete(skb);

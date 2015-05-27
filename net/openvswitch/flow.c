@@ -100,7 +100,9 @@ void ovs_flow_stats_update(struct sw_flow *flow, __be16 tcp_flags,
 
 				new_stats =
 					kmem_cache_alloc_node(flow_stats_cache,
-							      GFP_THISNODE |
+							      GFP_NOWAIT |
+							      __GFP_THISNODE |
+							      __GFP_NOWARN |
 							      __GFP_NOMEMALLOC,
 							      node);
 				if (likely(new_stats)) {
@@ -716,6 +718,8 @@ int ovs_flow_key_extract_userspace(const struct nlattr *attr,
 				   struct sw_flow_key *key, bool log)
 {
 	int err;
+
+	memset(key, 0, OVS_SW_FLOW_KEY_METADATA_SIZE);
 
 	/* Extract metadata from netlink attributes. */
 	err = ovs_nla_get_flow_metadata(attr, key, log);
