@@ -153,7 +153,6 @@ above with "sync" or "nosync" always output ahead of the other
 arguments, regardless of the order used when originally loading the table.
 Arguments that can be repeated are ordered by value.
 
-
 'dmsetup status' yields information on the state and health of the array.
 The output is as follows (normally a single line, but expanded here for
 clarity):
@@ -208,7 +207,6 @@ include:
 	"check"  - Initiate a check (i.e. a "scrub") of the array.
 	"repair" - Initiate a repair of the array.
 	"reshape"- Currently unsupported (-EINVAL).
-
 
 Discard Support
 ---------------
