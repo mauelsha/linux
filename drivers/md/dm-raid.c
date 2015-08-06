@@ -1496,8 +1496,9 @@ static int rs_setup_conversion(struct raid_set *rs)
 	 * This is being checked for in the constructor path,
 	 * but better be cautious.
 	 */
-	if (rs->ctr_flags & CTR_FLAGS_ANY_SYNC)
-		return ti_error_einval(rs->ti, "any sync arguments prohibited on takeover/reshape/resize request");
+	if (!rs_resize_requested(rs) &&
+	    (CTR_FLAGS_ANY_SYNC & rs->ctr_flags))
+		return ti_error_einval(rs->ti, "any sync arguments prohibited on takeover/reshape request");
 
 #if DEVEL_OUTPUT
 	/* HM FIXME REMOVEME: devel */
@@ -2849,7 +2850,7 @@ static int load_and_analyse_superblocks(struct raid_set *rs)
 	 * No need to set MD_RECOVERY_NEEDED flag, because mddev_resume() will
 	 */
 	if (rs->ctr_flags & CTR_FLAGS_ANY_SYNC) {
-		if (rs_conversion_requested(rs))
+		if (rs_conversion_requested(rs) && !rs_resize_requested(rs))
 			return ti_error_einval(rs->ti, "Invalid sync request whilst raid set conversion requested");
 
 		mddev->recovery_cp = (rs->ctr_flags & CTR_FLAG_SYNC) ? 0 : MaxSector;

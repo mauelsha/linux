@@ -315,14 +315,10 @@ void mddev_suspend(struct mddev *mddev)
 	BUG_ON(mddev->suspended);
 	mddev->suspended = 1;
 	synchronize_rcu();
-pr_alert("%s %u\n", __func__, __LINE__);
 	wait_event(mddev->sb_wait, atomic_read(&mddev->active_io) == 0);
-pr_alert("%s %u\n", __func__, __LINE__);
 	mddev->pers->quiesce(mddev, 1);
-pr_alert("%s %u\n", __func__, __LINE__);
 
 	del_timer_sync(&mddev->safemode_timer);
-pr_alert("%s %u\n", __func__, __LINE__);
 }
 EXPORT_SYMBOL_GPL(mddev_suspend);
 
@@ -3499,38 +3495,7 @@ level_store(struct mddev *mddev, const char *buf, size_t len)
 		mddev->in_sync = 1;
 		del_timer_sync(&mddev->safemode_timer);
 	}
-<<<<<<< master
-<<<<<<< master
-<<<<<<< master
-<<<<<<< master
-<<<<<<< master
-	if (mddev->queue)
-		blk_set_stacking_limits(&mddev->queue->limits);
-=======
-=======
->>>>>>> HEAD~59
-<<<<<<< HEAD
 	blk_set_stacking_limits(&mddev->queue->limits);
->>>>>>> HEAD~75
-	pers->run(mddev);
-	set_bit(MD_CHANGE_DEVS, &mddev->flags);
-	mddev_resume(mddev);
-=======
-=======
->>>>>>> HEAD~71
-	if (mddev->queue)
-		blk_set_stacking_limits(&mddev->queue->limits);
-	pers->run(mddev);
-	set_bit(MD_CHANGE_DEVS, &mddev->flags);
-	mddev_resume(mddev);
-=======
-=======
->>>>>>> HEAD~55
-	if (mddev->queue)
-		blk_set_stacking_limits(&mddev->queue->limits);
-=======
-	blk_set_stacking_limits(&mddev->queue->limits);
->>>>>>> HEAD~22
 	pers->run(mddev);
 	set_bit(MD_CHANGE_DEVS, &mddev->flags);
 	mddev_resume(mddev);
@@ -4085,27 +4050,8 @@ size_show(struct mddev *mddev, char *page)
 
 static int update_size(struct mddev *mddev, sector_t num_sectors);
 
-<<<<<<< master
-<<<<<<< master
-<<<<<<< master
-<<<<<<< master
-<<<<<<< master
-/* API to expose size_store() to dm-raid target */
-=======
->>>>>>> HEAD~77
-=======
-/* API to expose size_store() to dm-raid target */
->>>>>>> HEAD~70
-=======
->>>>>>> HEAD~61
-=======
-/* API to expose size_store() to dm-raid target */
->>>>>>> HEAD~54
-int md_resize(struct mddev *mddev, sector_t sectors)
-=======
 static ssize_t
 size_store(struct mddev *mddev, const char *buf, size_t len)
->>>>>>> HEAD~22
 {
 	/* If array is inactive, we can reduce the component size, but
 	 * not increase it (except from 0).
@@ -4134,39 +4080,7 @@ size_store(struct mddev *mddev, const char *buf, size_t len)
 			err = -ENOSPC;
 	}
 	mddev_unlock(mddev);
-<<<<<<< master
-	return err;
-}
-EXPORT_SYMBOL_GPL(md_resize);
-
-<<<<<<< master
-<<<<<<< master
-<<<<<<< master
-<<<<<<< master
-/* Compatibility wrapper around md_resize() to keep md internal inbterface */
-=======
->>>>>>> HEAD~77
-=======
-/* Compatibility wrapper around md_resize() to keep md internal inbterface */
->>>>>>> HEAD~70
-=======
->>>>>>> HEAD~61
-=======
-/* Compatibility wrapper around md_resize() to keep md internal inbterface */
->>>>>>> HEAD~54
-static ssize_t
-size_store(struct mddev *mddev, const char *buf, size_t len)
-{
-	sector_t dev_sectors;
-	int err = strict_blocks_to_sectors(buf, &dev_sectors);
-
-	if (!err)
-		err = md_resize(mddev, dev_sectors);
-
-	return err ? (ssize_t) err : len;
-=======
 	return err ? err : len;
->>>>>>> HEAD~22
 }
 
 static struct md_sysfs_entry md_size =
@@ -5407,20 +5321,16 @@ static void __md_stop_writes(struct mddev *mddev)
 	del_timer_sync(&mddev->safemode_timer);
 
 	bitmap_flush(mddev);
-pr_alert("%s %u\n", __func__, __LINE__);
 	md_super_wait(mddev);
-pr_alert("%s %u\n", __func__, __LINE__);
 
 	if (mddev->ro == 0 &&
 	    (!mddev->in_sync || (mddev->flags & MD_UPDATE_SB_FLAGS))) {
 		/* mark array as shutdown cleanly */
 		mddev->in_sync = 1;
 		md_update_sb(mddev, 1);
-pr_alert("%s %u\n", __func__, __LINE__);
 	}
 	if (mddev_is_clustered(mddev))
 		md_cluster_ops->metadata_update_finish(mddev);
-pr_alert("%s %u\n", __func__, __LINE__);
 }
 
 void md_stop_writes(struct mddev *mddev)
