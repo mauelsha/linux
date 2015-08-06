@@ -214,8 +214,7 @@ static int create_strip_zones(struct mddev *mddev, struct r0conf **private_conf)
 			smallest = rdev1;
 		cnt++;
 
-		if (mddev->queue &&
-		    blk_queue_discard(bdev_get_queue(rdev1->bdev)))
+		if (blk_queue_discard(bdev_get_queue(rdev1->bdev)))
 			discard_supported = true;
 	}
 	if (cnt != mddev->raid_disks) {
