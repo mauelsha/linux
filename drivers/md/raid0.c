@@ -188,11 +188,7 @@ static int create_strip_zones(struct mddev *mddev, struct r0conf **private_conf)
 		}
 		dev[j] = rdev1;
 
-<<<<<<< master
 		if (mddev->queue)
-=======
-		if (mddev->gendisk)
->>>>>>> HEAD~30
 			disk_stack_limits(mddev->gendisk, rdev1->bdev,
 					  rdev1->data_offset << 9);
 
@@ -203,8 +199,7 @@ static int create_strip_zones(struct mddev *mddev, struct r0conf **private_conf)
 			smallest = rdev1;
 		cnt++;
 
-		if (mddev->queue &&
-		    blk_queue_discard(bdev_get_queue(rdev1->bdev)))
+		if (blk_queue_discard(bdev_get_queue(rdev1->bdev)))
 			discard_supported = true;
 	}
 	if (cnt != mddev->raid_disks) {

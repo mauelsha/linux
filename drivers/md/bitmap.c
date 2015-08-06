@@ -446,6 +446,7 @@ void bitmap_update_sb(struct bitmap *bitmap)
 	sb->sectors_reserved = cpu_to_le32(bitmap->mddev->
 					   bitmap_info.space);
 	kunmap_atomic(sb);
+	bitmap->storage.sb_page->index = 0;
 	write_page(bitmap, bitmap->storage.sb_page, 1);
 }
 
