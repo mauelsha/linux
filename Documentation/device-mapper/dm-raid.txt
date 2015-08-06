@@ -153,7 +153,6 @@ above with "sync" or "nosync" always output ahead of the other
 arguments, regardless of the order used when originally loading the table.
 Arguments that can be repeated are ordered by value.
 
-
 'dmsetup status' yields information on the state and health of the array.
 The output is as follows (normally a single line, but expanded here for
 clarity):
@@ -208,6 +207,32 @@ include:
 	"check"  - Initiate a check (i.e. a "scrub") of the array.
 	"repair" - Initiate a repair of the array.
 	"reshape"- Currently unsupported (-EINVAL).
+
+Discard Support
+---------------
+The implementation of discard support amoung hardware vendors varies. When
+a block is discarded, some storage devices will return zeros when it is
+read.  These devices set the 'discard_zeros_data' attribute.  Other devices
+will return random data.  Confusingly, some devices will set
+'discard_zeros_data', but will still not always return zeros when
+discarded blocks are read!  Since RAID 4/5/6 uses blocks from a number of
+devices to calculate parity blocks and relies on 'discard_zeros_data' returning
+zeroes doing so, it is important that the devices be consistent.  Blocks may be
+discarded in the middle of a RAID 4/5/6 stripe and if the read results are
+not consistent, the parity blocks may be calculated differently at any time;
+making the parity blocks useless for redundancy.  It is important to
+understand how your hardware behaves with discards if you are going
+to use RAID 4/5/6.
+
+Since the behavior of storage devices is unreliable in this respect - even
+when reporting 'discard_zeros_data' - RAID 4/5/6 does not enable discard
+support by default.  If the storage has been verified to return zeros when
+reading a discarded block, the following module parameter can be set:
+
+       'devices_handle_discards_safely'
+
+Once set, RAID 4/5/6 will enable discards and can safely use them.
+
 
 Version History
 ---------------
