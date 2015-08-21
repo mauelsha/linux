@@ -3242,7 +3242,7 @@ static int raid_map(struct dm_target *ti, struct bio *bio)
 	 * data images thus erroring the raid set
 	 */
 	if (unlikely(bio_end_sector(bio) > mddev->array_sectors))
-		bio_endio(bio, -EIO);
+		bio_endio(bio, DM_ENDIO_REQUEUE);
 	else
 		mddev->pers->make_request(mddev, bio);
 
@@ -3869,8 +3869,9 @@ static int raid_preresume(struct dm_target *ti)
 	DMINFO("started %s set", rs->raid_type->descr);
 
 	/*
-	 * The superblocks need to be updated on disk if the array
-	 * is new or _bitmap_load will overwrite them in core.
+	 * The superblocks need to be updated on disk if the
+	 * array is new or _bitmap_load will overwrite them
+	 * in core with old data.
 	 */
 	mddev->ro = 0;
 	set_bit(MD_CHANGE_DEVS, &mddev->flags);
@@ -3886,15 +3887,16 @@ static void raid_resume(struct dm_target *ti)
 	struct raid_set *rs = ti->private;
 	struct mddev *mddev = &rs->md;
 
-	if (_test_and_set_flag(RT_FLAG_SET_RESUMED, &rs->runtime_flags))
+	if (_test_and_set_flag(RT_FLAG_SET_RESUMED, &rs->runtime_flags)) {
 		/*
 		 * A secondary resume while the device is active.
 		 * Take this opportunity to check whether any failed
 		 * devices are reachable again.
 		 */
 		attempt_restore_of_faulty_devices(rs);
+		clear_bit(MD_RECOVERY_FROZEN, &mddev->recovery);
 
-	else {
+	} else {
 		mddev->ro = 0;
 		/*
 		 * If any of the constructor flags got paased in
@@ -3905,6 +3907,10 @@ static void raid_resume(struct dm_target *ti)
 		 * -> don't unfreeze resynchronization
 		 *    until imminant reload
 		 */
+#if DEVEL_OUTPUT
+		/* HM FIXME REMOVEME: devel */
+		DMINFO("--> %s %u ctr_flags=%x ctr_flsg &=%x", __func__, __LINE__, rs->ctr_flags, ALL_FREEZE_FLAGS & rs->ctr_flags);
+#endif
 		if (!(ALL_FREEZE_FLAGS & rs->ctr_flags))
 			clear_bit(MD_RECOVERY_FROZEN, &mddev->recovery);
 	}
