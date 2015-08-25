@@ -151,7 +151,13 @@ struct raid_dev {
 #define ALL_CTR_FLAGS		(CTR_FLAG_OPTIONS_NO_ARGS | \
 				 CTR_FLAG_OPTIONS_ONE_ARG)
 #define RAID0_INVALID_FLAGS ALL_CTR_FLAGS
-#define	ALL_FREEZE_FLAGS (ALL_CTR_FLAGS & ~(CTR_FLAG_REGION_SIZE | CTR_FLAGS_ANY_SYNC))
+
+/*
+ * All flags which cause an immediate reload once they have their way to raid metadata
+ */
+#define	ALL_FREEZE_FLAGS (ALL_CTR_FLAGS & ~(CTR_FLAG_REGION_SIZE | CTR_FLAGS_ANY_SYNC | \
+					    CTR_FLAG_RAID10_FORMAT | CTR_FLAG_RAID10_COPIES))
+
 /* "raid1" does not accept stripe cache or any raid10 or reshape arguments */
 #define RAID1_INVALID_FLAGS	(CTR_FLAG_STRIPE_CACHE | \
 				 CTR_FLAG_RAID10_COPIES | \
