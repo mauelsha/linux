@@ -3249,15 +3249,15 @@ static int raid_map(struct dm_target *ti, struct bio *bio)
 	/*
 	 * If we're reshaping to add disk(s)), ti->len and
 	 * mddev->array_sectors will differ during the process
-	 * (i->len > mddev->array_sectors), so we have to error
+	 * (i->len > mddev->array_sectors), so we have to requeue
 	 * bios with addresses > mddev->array_sectors here or
 	 * or there will occur accesses past EOD of the component
 	 * data images thus erroring the raid set
 	 */
 	if (unlikely(bio_end_sector(bio) > mddev->array_sectors))
-		bio_endio(bio, DM_ENDIO_REQUEUE);
-	else
-		mddev->pers->make_request(mddev, bio);
+		return DM_MAPIO_REQUEUE;
+
+	mddev->pers->make_request(mddev, bio);
 
 	return DM_MAPIO_SUBMITTED;
 }
@@ -3936,6 +3936,7 @@ static void raid_resume(struct dm_target *ti)
 #endif
 }
 
+#if 0
 static int raid_merge(struct dm_target *ti, struct bvec_merge_data *bvm,
 		      struct bio_vec *biovec, int max_size)
 {
@@ -3953,7 +3954,7 @@ static int raid_merge(struct dm_target *ti, struct bvec_merge_data *bvm,
 	 */
 	return rs->md.chunk_sectors;
 }
-
+#endif
 
 static struct target_type raid_target = {
 	.name = "raid",
@@ -3970,7 +3971,9 @@ static struct target_type raid_target = {
 	.postsuspend = raid_postsuspend,
 	.preresume = raid_preresume,
 	.resume = raid_resume,
+#if 0
 	.merge = raid_merge
+#endif
 };
 
 static int __init dm_raid_init(void)
