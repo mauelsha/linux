@@ -224,6 +224,7 @@ struct raid_set {
 	int raid_disks;
 	int failed_disks;
 	int data_offset;
+	int raid10_copies;
 
 	struct mddev md;
 	struct raid_type *raid_type;
@@ -355,8 +356,8 @@ static void rs_set_capacity(struct raid_set *rs)
 #endif
 	/* Make sure we access most actual mddev properties */
 	smp_rmb();
-	if (mddev->reshape_position == MaxSector &&
-	    rs->ti->len != mddev->array_sectors) {
+	if (rs->ti->len != mddev->array_sectors &&
+	    mddev->reshape_position == MaxSector) {
 		struct gendisk *gendisk = dm_disk(dm_table_get_md(rs->ti->table));
 
 		set_capacity(gendisk, mddev->array_sectors);
@@ -731,7 +732,7 @@ static void raid_dev_remove(struct dm_target *ti, struct raid_dev *rd)
 		list_del_init(&rdev->same_set);
 }
 
-/* Return # of data stipes of @mddev */
+/* Return # of data stripes of @mddev */
 static unsigned mddev_data_stripes(struct raid_set *rs)
 {
 	return rs->md.raid_disks - rs->raid_type->parity_devs;
@@ -752,10 +753,21 @@ static int rs_set_dev_and_array_sectors(struct raid_set *rs)
 		data_stripes = 1;
 		delta_disks = 0;
 
-	} else if (rt_is_raid10(rs->raid_type))
-		data_stripes /= 2;
+	} else if (rt_is_raid10(rs->raid_type)) {
+		/* HM FIXME: reshape? */
+		rs->md.array_sectors = dev_sectors;
 
-	if (sector_div(dev_sectors, data_stripes))
+		dev_sectors *= rs->raid10_copies;
+		if (sector_div(dev_sectors, data_stripes))
+			dev_sectors++;
+
+		rs->md.dev_sectors = dev_sectors;
+
+	} else if (!sector_div(dev_sectors, data_stripes)) {
+		rs->md.dev_sectors = dev_sectors;
+		rs->md.array_sectors = (data_stripes + (delta_disks > 0 ? -delta_disks : delta_disks)) * dev_sectors;
+
+	} else 
 		return ti_error_einval(rs->ti, "Target length not divisible by number of data devices");
 
 	rs->md.dev_sectors = dev_sectors;
@@ -794,7 +806,7 @@ static int raid_is_congested(struct dm_target_callbacks *cb, int bits)
 /* True if raid set @rs is currently in the process of reshaping */
 static int rs_is_reshaping(struct raid_set *rs)
 {
-	smp_rmb(); /* Make sure we access most recent reshape position */
+	smp_rmb(); /* Make sure we access recent reshape position */
 	return rs->md.reshape_position != MaxSector;
 }
 
@@ -1309,7 +1321,9 @@ static int rs_setup_reshape(struct raid_set *rs)
 	struct mddev *mddev = &rs->md;
 	struct md_rdev *rdev;
 
-	mddev->raid_disks = rs->raid_disks;
+	if (!rs_is_raid10(rs) || rs->delta_disks < 0)
+		mddev->raid_disks = rs->raid_disks;
+
 	mddev->delta_disks = rs->delta_disks;
 
 	/* Ignore impossible layout change whilst adding/removing disks */
@@ -1536,12 +1550,7 @@ static int rs_setup_conversion(struct raid_set *rs)
 		/* HM FIXME REMOVEME: devel */
 		DMINFO("%s %u *** reshape ***", __func__, __LINE__);
 #endif
-#if 0
-		/* Once raid10 reshaping evolves */
-		if (rs_is_raid10(rs) || rs_is_raid456(rs))
-#else
-		if (rs_is_raid456(rs))
-#endif
+		if (rs_is_raid456(rs) || rs_is_raid10(rs))
 			_set_flag(RT_FLAG_RESHAPE, &rs->runtime_flags);
 
 		else if (rs_is_raid1(rs))
@@ -1927,7 +1936,7 @@ static int parse_raid_params(struct raid_set *rs, struct dm_arg_set *as,
 			     unsigned num_raid_params)
 {
 	int r, region_size = 0, value;
-	unsigned raid10_copies = 2, rebuilds = 0;
+	unsigned rebuilds = 0;
 	unsigned i;
 	const char *arg, *key, *raid10_format = "near";
 	sector_t sectors_per_dev = rs->ti->len;
@@ -1950,6 +1959,8 @@ static int parse_raid_params(struct raid_set *rs, struct dm_arg_set *as,
 
 	rs->md.chunk_sectors = value;
 	rs->md.new_chunk_sectors = value;
+
+	rs->raid10_copies = 2;
 
 	/*
 	 * We set each individual device as In_sync with a completed
@@ -2074,7 +2085,7 @@ static int parse_raid_params(struct raid_set *rs, struct dm_arg_set *as,
 			if (!_in_range(value, 2, 0xFF))
 				return ti_error_einval(rs->ti, "Bad value for 'raid10_copies'");
 
-			raid10_copies = value;
+			rs->raid10_copies = value;
 
 		} else if (!strcasecmp(key, _argname_by_flag(CTR_FLAG_REBUILD))) {
 			/*
@@ -2175,22 +2186,13 @@ static int parse_raid_params(struct raid_set *rs, struct dm_arg_set *as,
 
 	/* "raid10": check for invalid format/copies */
 	if (rt_is_raid10(rs->raid_type)) {
-		if (raid10_copies > rs->md.raid_disks)
+		/* Check for "near" constraint */
+		if (!strcmp(raid10_format, "near") &&
+		    rs->md.raid_disks > 2 &&
+		    rs->raid10_copies > rs->md.raid_disks) //  - 1)
 			return ti_error_einval(rs->ti, "Not enough devices to satisfy specification");
 
-		/*
-		 * If the format is not "near", we only support
-		 * two copies at the moment.
-		 */
-		if (strcasecmp("near", raid10_format) && (raid10_copies > 2))
-			return ti_error_einval(rs->ti, "Too many copies for given raid10 format.");
-
-		/* (Len * #mirrors) / #devices */
-		/* This is for max 2 copies only */
-		sectors_per_dev = rs->ti->len * raid10_copies;
-		sector_div(sectors_per_dev, rs->md.raid_disks);
-		rs->md.new_layout = raid10_format_to_md_layout(raid10_format, raid10_copies);
-		rs->md.dev_sectors = sectors_per_dev;
+		rs->md.new_layout = raid10_format_to_md_layout(raid10_format, rs->raid10_copies);
 	}
 
 	/* Assume there are no metadata devices until the drives are parsed */
@@ -2689,12 +2691,17 @@ DMINFO("%s %u new_devs=%u rs->rebuild_disks=%llX", __func__, __LINE__, new_devs,
  */
 static int super_validate(struct raid_set *rs, struct md_rdev *rdev)
 {
-	struct dm_raid_superblock *sb = page_address(rdev->sb_page);
+	struct dm_raid_superblock *sb;
 
 #if DEVEL_OUTPUT
 	/* HM FIXME REMOVEME: devel */
 	DMINFO("%s %u", __func__, __LINE__);
 #endif
+	if (!rdev->sb_page)
+		return 0;
+
+	sb = page_address(rdev->sb_page);
+
 	if (!test_and_clear_bit(FirstUse, &rdev->flags)) {
 		rdev->recovery_offset = le64_to_cpu(sb->disk_recovery_offset);
 		if (rdev->recovery_offset == MaxSector)
@@ -3915,7 +3922,7 @@ static void raid_resume(struct dm_target *ti)
 		 */
 #if DEVEL_OUTPUT
 		/* HM FIXME REMOVEME: devel */
-		DMINFO("--> %s %u ctr_flags=%x ctr_flsg &=%x", __func__, __LINE__, rs->ctr_flags, ALL_FREEZE_FLAGS & rs->ctr_flags);
+		DMINFO("--> %s %u ctr_flags=%x ctr_flags &=%x", __func__, __LINE__, rs->ctr_flags, ALL_FREEZE_FLAGS & rs->ctr_flags);
 #endif
 		if (!(ALL_FREEZE_FLAGS & rs->ctr_flags))
 			clear_bit(MD_RECOVERY_FROZEN, &mddev->recovery);
