@@ -3250,15 +3250,15 @@ static int raid_map(struct dm_target *ti, struct bio *bio)
 	/*
 	 * If we're reshaping to add disk(s)), ti->len and
 	 * mddev->array_sectors will differ during the process
-	 * (i->len > mddev->array_sectors), so we have to error
+	 * (i->len > mddev->array_sectors), so we have to requeue
 	 * bios with addresses > mddev->array_sectors here or
 	 * or there will occur accesses past EOD of the component
 	 * data images thus erroring the raid set
 	 */
 	if (unlikely(bio_end_sector(bio) > mddev->array_sectors))
-		bio_endio(bio, DM_ENDIO_REQUEUE);
-	else
-		mddev->pers->make_request(mddev, bio);
+		return DM_MAPIO_REQUEUE;
+
+	mddev->pers->make_request(mddev, bio);
 
 	return DM_MAPIO_SUBMITTED;
 }
