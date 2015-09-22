@@ -1321,9 +1321,7 @@ static int rs_setup_reshape(struct raid_set *rs)
 	struct mddev *mddev = &rs->md;
 	struct md_rdev *rdev;
 
-	if (!rs_is_raid10(rs) || rs->delta_disks < 0)
-		mddev->raid_disks = rs->raid_disks;
-
+	mddev->raid_disks = rs->raid_disks;
 	mddev->delta_disks = rs->delta_disks;
 
 	/* Ignore impossible layout change whilst adding/removing disks */
@@ -1358,12 +1356,10 @@ static int rs_setup_reshape(struct raid_set *rs)
 	 *   pair via te constructor
 	 */
 	if (mddev->delta_disks < 0) {
+		r = rs_set_dev_and_array_sectors(rs);
 #if DEVEL_OUTPUT
 		/* HM FIXME REMOVEME: devel */
 		DMINFO("%s %u shrink mddev->delta_disks=%d", __func__, __LINE__, mddev->delta_disks);
-#endif
-		r = rs_set_dev_and_array_sectors(rs);
-#if DEVEL_OUTPUT
 		WARN_ON(r);
 #endif
 		mddev->reshape_backwards = 1; /* removing disk(s) -> forward reshape */
@@ -1517,8 +1513,10 @@ static int rs_setup_conversion(struct raid_set *rs)
 	 * but better be cautious.
 	 */
 	if (!rs_resize_requested(rs) &&
-	    (CTR_FLAGS_ANY_SYNC & rs->ctr_flags))
-		return ti_error_einval(rs->ti, "any sync arguments prohibited on takeover/reshape request");
+	    (CTR_FLAGS_ANY_SYNC & rs->ctr_flags)) {
+		DMINFO("Ignoring any sync arguments on takeover/reshape reques!");
+		rs->ctr_flags &= ~CTR_FLAGS_ANY_SYNC;
+	}
 
 #if DEVEL_OUTPUT
 	/* HM FIXME REMOVEME: devel */
