@@ -446,7 +446,6 @@ void bitmap_update_sb(struct bitmap *bitmap)
 	sb->sectors_reserved = cpu_to_le32(bitmap->mddev->
 					   bitmap_info.space);
 	kunmap_atomic(sb);
-	bitmap->storage.sb_page->index = 0;
 	write_page(bitmap, bitmap->storage.sb_page, 1);
 }
 
@@ -1998,7 +1997,8 @@ int bitmap_resize(struct bitmap *bitmap, sector_t blocks,
 	if (bitmap->mddev->bitmap_info.offset || bitmap->mddev->bitmap_info.file)
 		ret = bitmap_storage_alloc(&store, chunks,
 					   !bitmap->mddev->bitmap_info.external,
-					   bitmap->cluster_slot);
+					   mddev_is_clustered(bitmap->mddev)
+					   ? bitmap->cluster_slot : 0);
 	if (ret)
 		goto err;
 
