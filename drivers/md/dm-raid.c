@@ -12,6 +12,7 @@
 #include <linux/module.h>
 #include <linux/log2.h>
 
+#include "dm.h"
 #include "md.h"
 #include "raid1.h"
 #include "raid5.h"
@@ -3661,6 +3662,10 @@ static void raid_io_hints(struct dm_target *ti, struct queue_limits *limits)
 	struct raid_set *rs = ti->private;
 	unsigned chunk_size = to_bytes(rs->md.new_chunk_sectors);
 
+	if (!chunk_size)
+		chunk_size = rs->md.bitmap_info.chunksize;
+
+DMINFO("chunk_size=%u", chunk_size);
 	blk_limits_io_min(limits, chunk_size);
 	blk_limits_io_opt(limits, chunk_size * (mddev_data_stripes(rs) + rs->md.delta_disks));
 }
