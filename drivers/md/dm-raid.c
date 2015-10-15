@@ -238,6 +238,11 @@ struct raid_set {
 #define	for_each_rd(rd, rs) \
 	for ((rd) = (rs)->dev + 0; (rd) < (rs)->dev + (rs)->raid_disks; (rd)++)
 
+#define	ALGORITHM_RAID10_DEFAULT 	0
+#define	ALGORITHM_RAID10_NEAR 		1
+#define	ALGORITHM_RAID10_FAR		2
+#define	ALGORITHM_RAID10_OFFSET		3
+
 /* Supported raid types and properties (raid5_0, and raid6_0_6 not supported). */
 static struct raid_type {
 	const char *name;		/* raid algorithm. */
@@ -247,23 +252,26 @@ static struct raid_type {
 	const unsigned level;		/* raid level. */
 	const unsigned algorithm;	/* raid algorithm. */
 } raid_types[] = {
-	{"raid0",      "raid0 (striping)",			 0, 2, 0, 0 /* NONE */},
-	{"raid1",      "raid1 (mirroring)",			 0, 2, 1, 0 /* NONE */},
-	{"raid10",     "raid10 (striped mirrors)",		 0, 2, 10, UINT_MAX /* Alogorithm varies */},
-	{"raid4",      "raid4 (dedicated last parity disk)",	 1, 2, 4, ALGORITHM_PARITY_N}, /* Native MD raid4 layout */
-	{"raid5_n",    "raid5 (dedicated last parity disk)",	 1, 2, 5, ALGORITHM_PARITY_N},
-	{"raid5_ls",   "raid5 (left symmetric)",		 1, 2, 5, ALGORITHM_LEFT_SYMMETRIC},
-	{"raid5_rs",   "raid5 (right symmetric)",		 1, 2, 5, ALGORITHM_RIGHT_SYMMETRIC},
-	{"raid5_la",   "raid5 (left asymmetric)",		 1, 2, 5, ALGORITHM_LEFT_ASYMMETRIC},
-	{"raid5_ra",   "raid5 (right asymmetric)",		 1, 2, 5, ALGORITHM_RIGHT_ASYMMETRIC},
-	{"raid6_zr",   "raid6 (zero restart)",			 2, 4, 6, ALGORITHM_ROTATING_ZERO_RESTART},
-	{"raid6_nr",   "raid6 (N restart)",			 2, 4, 6, ALGORITHM_ROTATING_N_RESTART},
-	{"raid6_nc",   "raid6 (N continue)",			 2, 4, 6, ALGORITHM_ROTATING_N_CONTINUE},
-	{"raid6_ls_6", "raid6 (left symmetric dedicated Q 6)",	 2, 4, 6, ALGORITHM_LEFT_SYMMETRIC_6},
-	{"raid6_rs_6", "raid6 (right symmetric dedicated Q 6)",	 2, 4, 6, ALGORITHM_RIGHT_SYMMETRIC_6},
-	{"raid6_la_6", "raid6 (left asymmetric dedicated Q 6)",	 2, 4, 6, ALGORITHM_LEFT_ASYMMETRIC_6},
-	{"raid6_ra_6", "raid6 (right asymmetric dedicated Q 6)", 2, 4, 6, ALGORITHM_RIGHT_ASYMMETRIC_6},
-	{"raid6_n_6",  "raid6 (dedicated parity/Q n/6)",	 2, 4, 6, ALGORITHM_PARITY_N_6}
+	{"raid0",         "raid0 (striping)",			    0, 2, 0,  0 /* NONE */},
+	{"raid1",         "raid1 (mirroring)",			    0, 2, 1,  0 /* NONE */},
+	{"raid10",        "raid10 (striped mirrors)",		    0, 2, 10, ALGORITHM_RAID10_DEFAULT},
+	{"raid10_near",   "raid10_near (near copies)",		    0, 2, 10, ALGORITHM_RAID10_NEAR},
+	{"raid10_far",    "raid10_far (far copies)",		    0, 2, 10, ALGORITHM_RAID10_FAR},
+	{"raid10_offset", "raid10_offset (adjacent copies)",	    0, 2, 10, ALGORITHM_RAID10_OFFSET},
+	{"raid4",         "raid4 (dedicated last parity disk)",	    1, 2, 4,  ALGORITHM_PARITY_N}, /* Native MD raid4 layout */
+	{"raid5_n",       "raid5 (dedicated last parity disk)",	    1, 2, 5,  ALGORITHM_PARITY_N},
+	{"raid5_ls",      "raid5 (left symmetric)",		    1, 2, 5,  ALGORITHM_LEFT_SYMMETRIC},
+	{"raid5_rs",      "raid5 (right symmetric)",		    1, 2, 5,  ALGORITHM_RIGHT_SYMMETRIC},
+	{"raid5_la",      "raid5 (left asymmetric)",		    1, 2, 5,  ALGORITHM_LEFT_ASYMMETRIC},
+	{"raid5_ra",      "raid5 (right asymmetric)",		    1, 2, 5,  ALGORITHM_RIGHT_ASYMMETRIC},
+	{"raid6_zr",      "raid6 (zero restart)",		    2, 4, 6,  ALGORITHM_ROTATING_ZERO_RESTART},
+	{"raid6_nr",      "raid6 (N restart)",			    2, 4, 6,  ALGORITHM_ROTATING_N_RESTART},
+	{"raid6_nc",      "raid6 (N continue)",			    2, 4, 6,  ALGORITHM_ROTATING_N_CONTINUE},
+	{"raid6_ls_6",    "raid6 (left symmetric dedicated Q 6)",   2, 4, 6,  ALGORITHM_LEFT_SYMMETRIC_6},
+	{"raid6_rs_6",    "raid6 (right symmetric dedicated Q 6)",  2, 4, 6,  ALGORITHM_RIGHT_SYMMETRIC_6},
+	{"raid6_la_6",    "raid6 (left asymmetric dedicated Q 6)",  2, 4, 6,  ALGORITHM_LEFT_ASYMMETRIC_6},
+	{"raid6_ra_6",    "raid6 (right asymmetric dedicated Q 6)", 2, 4, 6,  ALGORITHM_RIGHT_ASYMMETRIC_6},
+	{"raid6_n_6",     "raid6 (dedicated parity/Q n/6)",	    2, 4, 6,  ALGORITHM_PARITY_N_6}
 };
 
 /* Return raid_type for @name */
@@ -651,17 +659,46 @@ static int rs_set_raid456_stripe_cache(struct raid_set *rs, int value)
 	return 0;
 }
 
+/* HM FIXME: enable once use_far_sets does proper resilience with far/offset formats and small # of devices < 4 */
+/* HM FIXME: once use_far_sets works properly, why not support it at the interface level? */
+unsigned _raid10_offset = (1 << 16); /* stripes with data copies area adjacent on devices */
+#if 0
+static unsigned _raid10_use_far_sets = 0; /* Use set instead of whole stripe rotation */
+#else
+static unsigned _raid10_use_far_sets = (1 << 17); /* Use set instead of whole stripe rotation */
+#endif
+
+/* Return md raid10 near copies for @layout */
+static unsigned _raid10_near_copies(int layout)
+{
+	return layout & 0xFF;
+}
+
+/* Return md raid10 far copies for @layout */
+static unsigned _raid10_far_copies(int layout)
+{
+	return _raid10_near_copies(layout >> 8);
+}
+
+/* Return md raid10 far copies for @layout */
+static unsigned _is_raid10_offset(int layout)
+{
+	return layout & _raid10_offset;
+}
+
 /* Return md raid10 layout string for @layout */
 static char *raid10_md_layout_to_format(int layout)
 {
 	/*
-	 * Bit 16 and 17 stand for "offset" and "use_far_sets"
+	 * Bit 16 and 17 stand for "offset" (i.e. adjacent
+	 * stripes hold copies) and "use_far_sets"
+	 *
 	 * Refer to MD's raid10.c for details
 	 */
-	if ((layout & 0x10000) && (layout & 0x20000))
+	if (_is_raid10_offset(layout))
 		return "offset";
 
-	if ((layout & 0xFF) > 1)
+	if (_raid10_near_copies(layout) > 1)
 		return "near";
 
 	return "far";
@@ -670,30 +707,43 @@ static char *raid10_md_layout_to_format(int layout)
 /* Return md raid10 copies for @layout */
 static unsigned raid10_md_layout_to_copies(int layout)
 {
-	/* "near" */
-	if ((layout & 0xFF) > 1)
-		return layout & 0xFF;
+	unsigned copies = _raid10_near_copies(layout);
 
-	return (layout >> 8) & 0xFF;
+	/* "near" */
+	if (copies > 1)
+		return copies;
+
+	return _raid10_far_copies(layout);
 }
 
 /* Return md raid10 format id for @format string */
 static int raid10_format_to_md_layout(const char *format, unsigned copies)
 {
-	unsigned n = 1, f = 1;
+	unsigned n = 1, f = 1, r = 0;
 
+	/*
+	 * MD resilienece flaw:
+	 *
+	 * enabling use_far_sets for far/offset formats causes copies
+	 * to be colocated on the same devs together with their origins!
+	 *
+	 * -> disable it for now in the definition above
+	 */
 	if (!strcasecmp("near", format))
 		n = copies;
-	else
+
+	else if (!strcasecmp("offset", format)) {
 		f = copies;
+		r = _raid10_offset | _raid10_use_far_sets;
 
-	if (!strcasecmp("offset", format))
-		return 0x30000 | (f << 8) | n;
+	} else if (!strcasecmp("far", format)) {
+		f = copies;
+		r = (!_raid10_offset) | _raid10_use_far_sets;
 
-	if (!strcasecmp("far", format))
-		return 0x20000 | (f << 8) | n;
+	} else
+		return -EINVAL;
 
-	return (f << 8) | n;
+	return r | (f << 8) | n;
 }
 
 /*
@@ -822,6 +872,7 @@ static int rs_is_reshaping(struct raid_set *rs)
 static int rs_check_takeover(struct raid_set *rs)
 {
 	struct mddev *mddev = &rs->md;
+	unsigned data_copies;
 
 	switch (mddev->level) {
 	case 0:
@@ -843,17 +894,29 @@ static int rs_check_takeover(struct raid_set *rs)
 		break;
 
 	case 10:
-		/* raid10 -> raid0 */
-		if (mddev->new_level == 0) {
-			if (mddev->raid_disks % 2)
-				break;
+		/* Can't takeover raid10_offset! */
+		if (_is_raid10_offset(mddev->layout))
+			break;
 
-			mddev->raid_disks /= 2;
-			mddev->delta_disks = mddev->raid_disks;
-			return 0;
+		/* raid10* -> raid0 */
+		if (mddev->new_level == 0) {
+			/* Can takeover raid10_near with raid disks divisable by data copies! */
+			data_copies = _raid10_near_copies(mddev->layout);
+			if (data_copies > 1 &&
+			    !(mddev->raid_disks % data_copies)) {
+				mddev->raid_disks /= data_copies;
+				mddev->delta_disks = mddev->raid_disks;
+				return 0;
+			}
+
+			/* Can takeover raid10_far */
+			if (_raid10_far_copies(mddev->layout) > 2)
+				return 0;
+
+			break;
 		}
 
-		/* raid10 with 2 disks -> raid1/4/5 */
+		/* raid10_{near,far} with 2 disks -> raid1/4/5 */
 		if ((mddev->new_level == 1 || _in_range(mddev->new_level, 4, 5)) &&
 		    mddev->raid_disks == 2)
 			return 0;
@@ -1322,8 +1385,8 @@ static int rs_setup_reshape(struct raid_set *rs)
 	struct mddev *mddev = &rs->md;
 	struct md_rdev *rdev;
 
-	mddev->raid_disks = rs->raid_disks;
 	mddev->delta_disks = rs->delta_disks;
+	// mddev->raid_disks = rs->raid_disks;
 
 	/* Ignore impossible layout change whilst adding/removing disks */
 	if (mddev->delta_disks &&
@@ -1935,12 +1998,14 @@ static int parse_raid_params(struct raid_set *rs, struct dm_arg_set *as,
 			     unsigned num_raid_params)
 {
 	int r, region_size = 0, value;
+	int dont_expect_raid10_format = rs_is_raid10(rs) && rs->raid_type->algorithm != ALGORITHM_RAID10_DEFAULT;
 	unsigned rebuilds = 0;
 	unsigned i;
 	const char *arg, *key, *raid10_format = "near";
 	sector_t sectors_per_dev = rs->ti->len;
 	sector_t max_io_len;
 	struct raid_dev *rd;
+
 
 	/*
 	 * First, parse the in-order required arguments
@@ -2007,6 +2072,10 @@ static int parse_raid_params(struct raid_set *rs, struct dm_arg_set *as,
 
 		/* Parameter "raid10_format" which takes a string value is checked here. */
 		if (!strcasecmp(key, _argname_by_flag(CTR_FLAG_RAID10_FORMAT))) {
+			if (dont_expect_raid10_format)
+				return ti_error_einval(rs->ti, "\"raid10_{near,far,offset}\" and "
+							       "\"raid10_format\" are mutually exclusive!");
+
 			if (rs->ctr_flags & CTR_FLAG_RAID10_FORMAT)
 				return ti_error_einval(rs->ti, "Only one raid10_format argument pair allowed");
 
@@ -2185,13 +2254,13 @@ static int parse_raid_params(struct raid_set *rs, struct dm_arg_set *as,
 
 	/* "raid10": check for invalid format/copies */
 	if (rt_is_raid10(rs->raid_type)) {
-		/* Check for "near" constraint */
-		if (!strcmp(raid10_format, "near") &&
-		    rs->md.raid_disks > 2 &&
-		    rs->raid10_copies > rs->md.raid_disks) //  - 1)
+		/* Check for constraint */
+		if (rs->raid10_copies > rs->md.raid_disks)
 			return ti_error_einval(rs->ti, "Not enough devices to satisfy specification");
 
 		rs->md.new_layout = raid10_format_to_md_layout(raid10_format, rs->raid10_copies);
+		if (rs->md.new_layout < 0)
+			return rs->md.new_layout;
 	}
 
 	/* Assume there are no metadata devices until the drives are parsed */
@@ -2799,8 +2868,10 @@ static int superblocks_validate(struct raid_set *rs, struct md_rdev *freshest)
 		if (super_validate(rs, &rd->rdev))
 			return ti_error_einval(rs->ti, "Unable to assemble raid set: Invalid superblock");
 
+#if 0
 	if (validate_raid_redundancy(rs))
 		return ti_error_einval(rs->ti, "Insufficient redundancy to activate raid set");
+#endif
 
 	return 0;
 }
@@ -3662,6 +3733,7 @@ static void raid_io_hints(struct dm_target *ti, struct queue_limits *limits)
 	struct raid_set *rs = ti->private;
 	unsigned chunk_size = to_bytes(rs->md.new_chunk_sectors);
 
+	/* HM FIXME: better than 0, but... */
 	if (!chunk_size)
 		chunk_size = rs->md.bitmap_info.chunksize;
 
@@ -3684,25 +3756,6 @@ static void raid_presuspend(struct dm_target *ti)
 		mddev_resume(mddev);
 
 	/*
-	 * Address a teardown race when calling
-	 * raid_(pre|post)suspend followed by raid_dtr:
-	 *
-	 * MD's call chain md_stop_writes()->md_reap_sync_thread()
-	 * causes work to be queued on the md_misc_wq queue
-	 * intentionally not flushing it, hence the callback
-	 * can occur after a potential destruction of the raid set
-	 *
-	 * HM FIXME: this ain't safe, because there may be work queued by the time
-	 *	     neew e.g. use a flag to pass on to md_stop_writes->md_reap_sync_thread
-	 *	     to pay attention to as pictured bellow
-	 */
-#if 1
-	mddev->event_work.func = NULL;
-#else
-	set_bit(MD_RECOVERY_DONT_CALLBACK, $mddev->recovery);
-#endif
-
-	/*
 	 * Mandatory to enforce superblock updates in case of any
 	 * non-insync devices, e.g. reflecting correct recovery_cp
 	 */
@@ -3715,7 +3768,15 @@ static void raid_presuspend(struct dm_target *ti)
 	/* Stop any resynchronization/reshaping io */
 	mddev->ro = 0;
 	set_bit(MD_CHANGE_DEVS, &mddev->flags);
+#if DEVEL_OUTPUT
+	/* HM FIXME REMOVEME: devel */
+	DMINFO("%s %u", __func__, __LINE__);
+#endif
 	md_stop_writes(mddev);
+#if DEVEL_OUTPUT
+	/* HM FIXME REMOVEME: devel */
+	DMINFO("%s %u", __func__, __LINE__);
+#endif
 }
 
 static void raid_postsuspend(struct dm_target *ti)
@@ -3852,17 +3913,6 @@ static int raid_preresume(struct dm_target *ti)
 	struct raid_set *rs = ti->private;
 	struct mddev *mddev = &rs->md;
 
-	/*
-	 * See "Address a teardown race" in raid_presuspend()
-	 *
-	 * HM FIXME: unsafe, use e.g. flag as pictured bellow.
-	 */
-#if 1
-	mddev->event_work.func = do_table_event;
-#else
-	clear_bit(MD_RECOVERY_DONT_CALLBACK, $mddev->recovery);
-#endif
-
 #if DEVEL_OUTPUT
 	/* HM FIXME REMOVEME: devel */
 	DMINFO("%s %u", __func__, __LINE__);
@@ -3882,7 +3932,12 @@ static int raid_preresume(struct dm_target *ti)
 		return r;
 	}
 
-	DMINFO("started %s set", rs->raid_type->descr);
+	if (rs_is_raid10(rs))
+		DMINFO("started %s set, format \"%s\"",
+		       rs->raid_type->descr,
+		       raid10_md_layout_to_format(rs->md.layout));
+	else
+		DMINFO("started %s set", rs->raid_type->descr);
 
 	/*
 	 * The superblocks need to be updated on disk if the

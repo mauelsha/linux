@@ -3401,7 +3401,17 @@ static int setup_geo(struct geom *geo, struct mddev *mddev, enum geo_type new)
 	geo->near_copies = nc;
 	geo->far_copies = fc;
 	geo->far_offset = fo;
+#if 1
+	geo->far_set_size = ((layout & (1<<17)) && (disks / fc) > 1) ? disks / fc : disks;
+pr_alert("%s %u %i", __func__, __LINE__, geo->far_set_size);
+#else
 	geo->far_set_size = (layout & (1<<17)) ? disks / fc : disks;
+#if 1 /* HM */
+pr_alert("%s %u %i", __func__, __LINE__, geo->far_set_size);
+	geo->far_set_size = geo->far_set_size < fc ? fc : geo->far_set_size;
+pr_alert("%s %u %i", __func__, __LINE__, geo->far_set_size);
+#endif 
+#endif 
 	geo->chunk_mask = chunk - 1;
 	geo->chunk_shift = ffz(~chunk);
 	return nc*fc;
