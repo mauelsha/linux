@@ -1533,7 +1533,6 @@ static int _enough(struct r10conf *conf, int previous, int ignore)
 		int n = conf->copies;
 		int cnt = 0;
 		int this = first;
-pr_alert("%s %u n=%d", __func__, __LINE__, n);
 		while (n--) {
 			struct md_rdev *rdev;
 			if (this != ignore &&
@@ -1542,7 +1541,6 @@ pr_alert("%s %u n=%d", __func__, __LINE__, n);
 				cnt++;
 			this = (this+1) % disks;
 		}
-pr_alert("%s %u cnt=%d", __func__, __LINE__, cnt);
 		if (cnt == 0)
 			goto out;
 		first = (first + ncopies) % disks;
@@ -3781,10 +3779,8 @@ static int raid10_resize(struct mddev *mddev, sector_t sectors)
 			return ret;
 	}
 	md_set_array_sectors(mddev, size);
-	if (mddev->queue) {
-		set_capacity(mddev->gendisk, mddev->array_sectors);
-		revalidate_disk(mddev->gendisk);
-	}
+	set_capacity(mddev->gendisk, mddev->array_sectors);
+	revalidate_disk(mddev->gendisk);
 	if (sectors > mddev->dev_sectors &&
 	    mddev->recovery_cp > oldsize) {
 		mddev->recovery_cp = oldsize;
@@ -4594,10 +4590,8 @@ static void raid10_finish_reshape(struct mddev *mddev)
 			set_bit(MD_RECOVERY_NEEDED, &mddev->recovery);
 		}
 		mddev->resync_max_sectors = size;
-		if (mddev->queue) {
-			set_capacity(mddev->gendisk, mddev->array_sectors);
-			revalidate_disk(mddev->gendisk);
-		}
+		set_capacity(mddev->gendisk, mddev->array_sectors);
+		revalidate_disk(mddev->gendisk);
 	} else {
 		int d;
 		for (d = conf->geo.raid_disks ;
