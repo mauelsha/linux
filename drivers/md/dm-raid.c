@@ -661,12 +661,9 @@ static int rs_set_raid456_stripe_cache(struct raid_set *rs, int value)
 
 /* HM FIXME: enable once use_far_sets does proper resilience with far/offset formats and small # of devices < 4 */
 /* HM FIXME: once use_far_sets works properly, why not support it at the interface level? */
-unsigned _raid10_offset = (1 << 16); /* stripes with data copies area adjacent on devices */
-#if 0
-static unsigned _raid10_use_far_sets = 0; /* Use set instead of whole stripe rotation */
-#else
-static unsigned _raid10_use_far_sets = (1 << 17); /* Use set instead of whole stripe rotation */
-#endif
+#define RAID10_OFFSET		(1 << 16) /* stripes with data copies area adjacent on devices */
+#define RAID10_USE_FAR_SETS	(1 << 17) /* Use set instead of whole stripe rotation */
+#define RAID10_FAR_COPIES_SHIFT	8	  /* raid10 # far copies shift (2nd byte of layout) */
 
 /* Return md raid10 near copies for @layout */
 static unsigned _raid10_near_copies(int layout)
@@ -677,13 +674,13 @@ static unsigned _raid10_near_copies(int layout)
 /* Return md raid10 far copies for @layout */
 static unsigned _raid10_far_copies(int layout)
 {
-	return _raid10_near_copies(layout >> 8);
+	return _raid10_near_copies(layout >> RAID10_FAR_COPIES_SHIFT);
 }
 
 /* Return md raid10 far copies for @layout */
 static unsigned _is_raid10_offset(int layout)
 {
-	return layout & _raid10_offset;
+	return layout & RAID10_OFFSET;
 }
 
 /* Return md raid10 layout string for @layout */
@@ -698,22 +695,14 @@ static char *raid10_md_layout_to_format(int layout)
 	if (_is_raid10_offset(layout))
 		return "offset";
 
-	if (_raid10_near_copies(layout) > 1)
-		return "near";
-
-	return "far";
+	return _raid10_near_copies(layout) > 1 ? "near" : "far";
 }
 
 /* Return md raid10 copies for @layout */
 static unsigned raid10_md_layout_to_copies(int layout)
 {
-	unsigned copies = _raid10_near_copies(layout);
-
-	/* "near" */
-	if (copies > 1)
-		return copies;
-
-	return _raid10_far_copies(layout);
+	return _raid10_near_copies(layout) > 1 ?
+	       _raid10_near_copies(layout) : _raid10_far_copies(layout);
 }
 
 /* Return md raid10 format id for @format string */
@@ -734,16 +723,16 @@ static int raid10_format_to_md_layout(const char *format, unsigned copies)
 
 	else if (!strcasecmp("offset", format)) {
 		f = copies;
-		r = _raid10_offset | _raid10_use_far_sets;
+		r = RAID10_OFFSET | RAID10_USE_FAR_SETS;
 
 	} else if (!strcasecmp("far", format)) {
 		f = copies;
-		r = (!_raid10_offset) | _raid10_use_far_sets;
+		r = (!RAID10_OFFSET) | RAID10_USE_FAR_SETS;
 
 	} else
 		return -EINVAL;
 
-	return r | (f << 8) | n;
+	return r | (f << RAID10_FAR_COPIES_SHIFT) | n;
 }
 
 /*
@@ -798,7 +787,7 @@ static int rs_set_dev_and_array_sectors(struct raid_set *rs)
 
 #if DEVEL_OUTPUT
 	/* HM FIXME REMOVEME: devel */
-	DMINFO("%s %u ti->len=%llu data_stripes=%u", __func__, __LINE__, (unsigned long long) rs->ti->len, data_stripes);
+	DMINFO("%s %u ti->len=%llu rs->md.raid_disks=%u datastripes=%u rs->raid_disks=%u rs->delta_disks=%u", __func__, __LINE__, (unsigned long long) rs->ti->len, rs->md.raid_disks, data_stripes, rs->raid_disks, rs->delta_disks);
 #endif
 	if (rt_is_raid1(rs->raid_type)) {
 		data_stripes = 1;
@@ -828,7 +817,6 @@ static int rs_set_dev_and_array_sectors(struct raid_set *rs)
 	/* HM FIXME REMOVEME: devel */
 	DMINFO("%s %u dev_sectors=%llu array_sectors=%llu", __func__, __LINE__, (unsigned long long) dev_sectors, (unsigned long long) rs->md.array_sectors);
 #endif
-
 	return 0;
 }
 
@@ -1433,8 +1421,8 @@ static int rs_setup_reshape(struct raid_set *rs)
 		/* HM FIXME REMOVEME: devel */
 		DMINFO("%s %u grow mddev->delta_disks=%d", __func__, __LINE__, mddev->delta_disks);
 #endif
-		/* Prepare disks for check in raid4/5/6 start_reshape */
-		for (d = mddev->raid_disks - mddev->delta_disks; d < mddev->raid_disks; d++) {
+		/* Prepare disks for check in raid4/5/6/10 {check|start}_reshape */
+		for (d = mddev->raid_disks; d < rs->raid_disks; d++) {
 			rdev = &rs->dev[d].rdev;
 #if DEVEL_OUTPUT
 			/* HM FIXME REMOVEME: devel */
@@ -3881,12 +3869,10 @@ static int _bitmap_load(struct raid_set *rs)
 	/* Try loading the bitmap unless "raid0", which does not have one */
 	if (!rt_is_raid0(rs->raid_type)) {
 		struct mddev *mddev = &rs->md;
-
 #if DEVEL_OUTPUT
 		/* HM FIXME REMOVEME: devel */
 		DMINFO("%s %u bitmap->count.chunk=%lu", __func__, __LINE__, mddev->bitmap->counts.chunks);
 #endif
-
 		if (!_test_and_set_flag(RT_FLAG_BITMAP_LOADED, &rs->runtime_flags)) {
 			r = bitmap_load(mddev);
 			if (r)
