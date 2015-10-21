@@ -1749,7 +1749,8 @@ static int validate_region_size(struct raid_set *rs, unsigned long region_size)
 		if (min_region_size > (1 << 13)) {
 			/* If not a power of 2, make it the next power of 2 */
 			region_size = roundup_pow_of_two(min_region_size);
-			DMINFO("Choosing region size of %lu sectors", region_size);
+			DMINFO("Choosing default region size of %lu sectors",
+			       region_size);
 		} else {
 			region_size = 1 << 13; /* sectors */
 			DMINFO("Choosing default region size of 4MiB");
