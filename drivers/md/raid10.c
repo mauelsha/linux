@@ -1533,7 +1533,6 @@ static int _enough(struct r10conf *conf, int previous, int ignore)
 		int n = conf->copies;
 		int cnt = 0;
 		int this = first;
-pr_alert("%s %u n=%d", __func__, __LINE__, n);
 		while (n--) {
 			struct md_rdev *rdev;
 			if (this != ignore &&
@@ -1542,7 +1541,6 @@ pr_alert("%s %u n=%d", __func__, __LINE__, n);
 				cnt++;
 			this = (this+1) % disks;
 		}
-pr_alert("%s %u cnt=%d", __func__, __LINE__, cnt);
 		if (cnt == 0)
 			goto out;
 		first = (first + ncopies) % disks;
