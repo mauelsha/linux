@@ -208,7 +208,6 @@ include:
 	"repair" - Initiate a repair of the array.
 	"reshape"- Currently unsupported (-EINVAL).
 
-
 Discard Support
 ---------------
 The implementation of discard support among hardware vendors varies.
