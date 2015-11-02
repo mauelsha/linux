@@ -7580,7 +7580,6 @@ static void *raid45_takeover_raid0(struct mddev *mddev, int level)
 	mddev->dev_sectors = sectors;
 	mddev->new_level = level;
 	mddev->new_layout = ALGORITHM_PARITY_N;
-	mddev->new_chunk_sectors = mddev->chunk_sectors;
 	mddev->raid_disks += 1;
 	mddev->delta_disks = 1;
 	/* make sure it will be not marked as dirty */
