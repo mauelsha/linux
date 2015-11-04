@@ -172,7 +172,7 @@ struct raid_dev {
 #define RAID10_INVALID_FLAGS	(CTR_FLAG_WRITE_MOSTLY | \
 				 CTR_FLAG_MAX_WRITE_BEHIND | \
 				 CTR_FLAG_STRIPE_CACHE )
-/* "raid456" does not accept any raid1 or raid10 specific arguments */
+/* "raid456" do not accept any raid1 or raid10 specific arguments */
 #define RAID456_INVALID_FLAGS	(CTR_FLAG_WRITE_MOSTLY | \
 				 CTR_FLAG_MAX_WRITE_BEHIND | \
 				 CTR_FLAG_RAID10_FORMAT | \
@@ -775,8 +775,8 @@ static void raid_dev_remove(struct dm_target *ti, struct raid_dev *rd)
 		list_del_init(&rdev->same_set);
 }
 
-/* Return # of data stripes of @mddev */
-static unsigned mddev_data_stripes(struct raid_set *rs)
+/* Return # of data stripes of @rs (i.e. as of ctr) */
+static unsigned rs_data_stripes(struct raid_set *rs)
 {
 	return rs->raid_disks - rs->raid_type->parity_devs;
 }
@@ -785,12 +785,12 @@ static unsigned mddev_data_stripes(struct raid_set *rs)
 static int rs_set_dev_and_array_sectors(struct raid_set *rs)
 {
 	int delta_disks = rs->delta_disks ?: rs->md.delta_disks;
-	unsigned data_stripes = mddev_data_stripes(rs);
+	unsigned data_stripes = rs_data_stripes(rs);
 	sector_t dev_sectors = rs->ti->len;
 
 #if DEVEL_OUTPUT
 	/* HM FIXME REMOVEME: devel */
-	DMINFO("%s %u ti->len=%llu rs->md.raid_disks=%u datastripes=%u rs->raid_disks=%u rs->delta_disks=%u", __func__, __LINE__, (unsigned long long) rs->ti->len, rs->md.raid_disks, data_stripes, rs->raid_disks, rs->delta_disks);
+	DMINFO("%s %u ti->len=%llu rs->md.raid_disks=%u datastripes=%u rs->raid_disks=%u rs->delta_disks=%d", __func__, __LINE__, (unsigned long long) rs->ti->len, rs->md.raid_disks, data_stripes, rs->raid_disks, rs->delta_disks);
 #endif
 	if (rt_is_raid1(rs->raid_type)) {
 		data_stripes = 1;
@@ -3787,7 +3787,7 @@ static void raid_io_hints(struct dm_target *ti, struct queue_limits *limits)
 
 DMINFO("chunk_size=%u", chunk_size);
 	blk_limits_io_min(limits, chunk_size);
-	blk_limits_io_opt(limits, chunk_size * (mddev_data_stripes(rs) + rs->md.delta_disks));
+	blk_limits_io_opt(limits, chunk_size * (rs_data_stripes(rs) + rs->md.delta_disks));
 }
 
 static void raid_presuspend(struct dm_target *ti)
