@@ -8027,6 +8027,7 @@ static int remove_and_add_spares(struct mddev *mddev,
 		goto no_add;
 
 	rdev_for_each(rdev, mddev) {
+pr_alert("%s %u rdev->raid_disk=%d rdev->save_raid_disk=%d rdev->flags=%lx\n", __func__, __LINE__, rdev->raid_disk, rdev->saved_raid_disk, rdev->flags);
 		if (rdev->raid_disk >= 0 &&
 		    !test_bit(In_sync, &rdev->flags) &&
 		    !test_bit(Faulty, &rdev->flags))
@@ -8041,6 +8042,7 @@ static int remove_and_add_spares(struct mddev *mddev,
 			continue;
 
 		rdev->recovery_offset = 0;
+pr_alert("%s %u rdev->recovery_offset=0\n", __func__, __LINE__);
 		if (mddev->pers->
 		    hot_add_disk(mddev, rdev) == 0) {
 			if (sysfs_link_rdev(mddev, rdev))

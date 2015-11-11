@@ -23,7 +23,7 @@
 #include <linux/raid/md_p.h>
 
 #define DM_MSG_PREFIX		"raid"
-#define	MAX_raid_DEVICES	253 /* MD raid limit */
+#define	MAX_RAID_DEVICES	253 /* MD raid limit */
 
 /*
  * Minimum sectors of free reshape space per raid device
@@ -80,8 +80,10 @@ static void dump_mddev(struct mddev *mddev, const char *msg)
 /*
  * The following flags are used by dm-raid.c to set up the raid set state.
  * They must be cleared before md_run is called.
+ *
+ * I use the MSB in order to minimize the danger of a future collision
  */
-#define FirstUse 31 /* temporary rdev flag to indicate new device */
+#define FirstUse ((sizeof(((struct mddev *) 0)->flags) * 8) - 1) /* temporary rdev flag to indicate new device */
 
 struct raid_dev {
 	/*
@@ -215,7 +217,7 @@ struct arg_name_flag {
 };
 
 /* Array elements of 64 bit needed for rebuold/write_mostyl bits */
-#define DISKS_ARRAY_ELEMS ((MAX_raid_DEVICES + (sizeof(uint64_t) * 8 - 1)) / sizeof(uint64_t) / 8)
+#define DISKS_ARRAY_ELEMS ((MAX_RAID_DEVICES + (sizeof(uint64_t) * 8 - 1)) / sizeof(uint64_t) / 8)
 
 struct raid_set {
 	struct dm_target *ti;
@@ -776,16 +778,16 @@ static void raid_dev_remove(struct dm_target *ti, struct raid_dev *rd)
 }
 
 /* Return # of data stripes of @rs (i.e. as of ctr) */
-static unsigned rs_data_stripes(struct raid_set *rs)
+static unsigned mddev_data_stripes(struct raid_set *rs)
 {
-	return rs->raid_disks - rs->raid_type->parity_devs;
+	return rs->md.raid_disks - rs->raid_type->parity_devs;
 }
 
 /* Calculate the sectors per device and per array used for @rs */
 static int rs_set_dev_and_array_sectors(struct raid_set *rs)
 {
 	int delta_disks = rs->delta_disks ?: rs->md.delta_disks;
-	unsigned data_stripes = rs_data_stripes(rs);
+	unsigned data_stripes = mddev_data_stripes(rs);
 	sector_t dev_sectors = rs->ti->len;
 
 #if DEVEL_OUTPUT
@@ -1404,6 +1406,7 @@ static int rs_setup_reshape(struct raid_set *rs)
 	mddev->delta_disks = rs->delta_disks;
 	cur_raid_devs = mddev->raid_disks;
 	// mddev->raid_disks = rs->raid_disks;
+DMINFO("%s %u mddev->raid_disks=%d mddev->delta_disks=%d", __func__, __LINE__, mddev->raid_disks, mddev->delta_disks);
 
 	/* Ignore impossible layout change whilst adding/removing disks */
 	if (mddev->delta_disks &&
@@ -1451,9 +1454,14 @@ static int rs_setup_reshape(struct raid_set *rs)
 			DMINFO("%s %u rdev[%u]", __func__, __LINE__, d);
 #endif
 			clear_bit(In_sync, &rdev->flags);
-			rdev->recovery_offset = MaxSector;
-			rdev->saved_raid_disk = rdev->raid_disk;
-			rdev->raid_disk = -1;
+
+			/*
+			 * save_raid_disk needs to be -1, or recovery_offset will be set to 0
+			 * by md, which'll store that erroneously in the superblock on reshape
+ 			 */
+			rdev->saved_raid_disk = -1;
+			rdev->raid_disk = d;
+
 			rdev->sectors = mddev->dev_sectors;
 		}
 
@@ -1543,8 +1551,8 @@ static int rs_start_reshape(struct raid_set *rs)
 #if DEVEL_OUTPUT
 	dump_mddev(mddev, __func__);
 #endif
-	mddev_unlock(mddev);
 	/* Need to be resumed to be able to start reshape, recovery is frozen until raid_resume() though */
+	mddev_unlock(mddev);
 	mddev_resume(mddev);
 
 	/* Try to adjust the raid4/5/6 stripe cache size to the stripe size */
@@ -2148,8 +2156,8 @@ static int parse_raid_params(struct raid_set *rs, struct dm_arg_set *as,
 			if (_test_and_set_flag(CTR_FLAG_DELTA_DISKS, &rs->ctr_flags))
 				return ti_error_einval(rs->ti, "Only one delta_disks argument pair allowed");
 
-			/* Ensure MAX_raid_DEVICES and raid type minimal_devs! */
-			if (!_in_range(abs(value), 1, MAX_raid_DEVICES - rs->raid_type->minimal_devs))
+			/* Ensure MAX_RAID_DEVICES and raid type minimal_devs! */
+			if (!_in_range(abs(value), 1, MAX_RAID_DEVICES - rs->raid_type->minimal_devs))
 				return ti_error_einval(rs->ti, "Too many delta_disk requested");
 
 			rs->delta_disks = value;
@@ -2447,6 +2455,7 @@ static void super_sync(struct mddev *mddev, struct md_rdev *rdev)
 
 	sb_update_failed_devices(sb, failed_devices);
 
+DMINFO("%s %u rdev->raid_disk=%d recovery_offset=%llu", __func__, __LINE__, rdev->raid_disk, (unsigned long long) rdev->recovery_offset);
 	sb->disk_recovery_offset = cpu_to_le64(rdev->recovery_offset);
 	sb->array_resync_offset = cpu_to_le64(mddev->recovery_cp);
 	sb->reshape_position = cpu_to_le64(mddev->reshape_position);
@@ -2531,6 +2540,7 @@ static int super_load(struct raid_set *rs, struct md_rdev *rdev, struct md_rdev 
 		 * Set dm-raid private flag to indicate first use of device.
 		 * Will be reset before running the array.
 		 */
+
 		set_bit(FirstUse, &rdev->flags);
 
 		/* Force writing of superblocks to disk */
@@ -2629,8 +2639,8 @@ static int super_validate_freshest(struct raid_set *rs, struct md_rdev *rdev)
 		}
 
 #if DEVEL_OUTPUT
-	/* HM FIXME REMOVEME: devel */
-	dump_mddev(mddev, __func__);
+		/* HM FIXME REMOVEME: devel */
+		dump_mddev(mddev, __func__);
 #endif
 
 	} else {
@@ -2671,10 +2681,6 @@ static int super_validate_freshest(struct raid_set *rs, struct md_rdev *rdev)
 
 	if (!(rs->ctr_flags & CTR_FLAG_NOSYNC))
 		mddev->recovery_cp = le64_to_cpu(sb->array_resync_offset);
-#if DEVEL_OUTPUT
-	/* HM FIXME REMOVEME: devel */
-	dump_mddev(mddev, __func__);
-#endif
 
 	/* HM FIXME: logic below wrong for reshape?! */
 	/*
@@ -2782,6 +2788,10 @@ DMINFO("%s %u new_devs=%u rs->rebuild_disks=%llX", __func__, __LINE__, new_devs,
 				set_bit(Faulty, &r->flags);
 		}
 	}
+#if DEVEL_OUTPUT
+	/* HM FIXME REMOVEME: devel */
+	dump_mddev(mddev, __func__);
+#endif
 
 	return 0;
 }
@@ -2795,7 +2805,7 @@ static int super_validate(struct raid_set *rs, struct md_rdev *rdev)
 
 #if DEVEL_OUTPUT
 	/* HM FIXME REMOVEME: devel */
-	DMINFO("%s %u", __func__, __LINE__);
+	DMINFO("%s %u rdev->flags=%lx", __func__, __LINE__, rdev->flags);
 #endif
 	if (!rdev->sb_page)
 		return 0;
@@ -2814,8 +2824,8 @@ static int super_validate(struct raid_set *rs, struct md_rdev *rdev)
 			clear_bit(In_sync, &rdev->flags); /* Mandatory for recovery */
 
 #if DEVEL_OUTPUT
-			/* HM FIXME REMOVEME: devel */
-			DMINFO("%s %u recovery_offset=%llu raid_disk=%d", __func__, __LINE__, (unsigned long long) rdev->recovery_offset, rdev->raid_disk);
+		/* HM FIXME REMOVEME: devel */
+		DMINFO("%s %u recovery_offset=%llu raid_disk=%d", __func__, __LINE__, (unsigned long long) rdev->recovery_offset, rdev->raid_disk);
 #endif
 	}
 
@@ -2828,7 +2838,7 @@ static int super_validate(struct raid_set *rs, struct md_rdev *rdev)
 		rdev->saved_raid_disk = rdev->raid_disk;
 	}
 
-	/* Reshape support -> restore repective members */
+	/* Reshape support -> restore repective data offsets and dev size */
 	if (FEATURE_FLAG_SUPPORTS_RESHAPE & le32_to_cpu(sb->features)) {
 		rdev->data_offset = le64_to_cpu(sb->data_offset);
 		rdev->new_data_offset = le64_to_cpu(sb->new_data_offset);
@@ -3302,7 +3312,7 @@ static int raid_ctr(struct dm_target *ti, unsigned argc, char **argv)
 	if (as_nrd.argc != num_raid_devs * 2)
 		return ti_error_einval(ti, "Supplied raid devices do not match the count given");
 
-	if (num_raid_devs > MAX_raid_DEVICES)
+	if (num_raid_devs > MAX_RAID_DEVICES)
 		return ti_error_einval(ti, "Too many supplied raid devices");
 
 	rs = context_alloc(ti, rt, num_raid_devs);
@@ -3434,7 +3444,7 @@ static unsigned _rs_emit_any_key_value_for_disks(const char *keyname, uint64_t *
 {
 	unsigned d, sz_start = sz;
 
-	for (d = 0; d < MAX_raid_DEVICES; d++)
+	for (d = 0; d < MAX_RAID_DEVICES; d++)
 		if (test_bit(d, (void *) bitset))
 			DMEMIT(" %s %u", keyname, d);
 
@@ -3787,7 +3797,7 @@ static void raid_io_hints(struct dm_target *ti, struct queue_limits *limits)
 
 DMINFO("chunk_size=%u", chunk_size);
 	blk_limits_io_min(limits, chunk_size);
-	blk_limits_io_opt(limits, chunk_size * (rs_data_stripes(rs) + rs->md.delta_disks));
+	blk_limits_io_opt(limits, chunk_size * mddev_data_stripes(rs));
 }
 
 static void raid_presuspend(struct dm_target *ti)
