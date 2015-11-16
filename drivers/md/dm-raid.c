@@ -664,10 +664,10 @@ static int rs_set_raid456_stripe_cache(struct raid_set *rs, int value)
 	return 0;
 }
 
-/* HM FIXME: enable once use_far_sets does proper resilience with far/offset formats and small # of devices < 4 */
 /* HM FIXME: once use_far_sets works properly, why not support it at the interface level? */
 #define RAID10_OFFSET		(1 << 16) /* stripes with data copies area adjacent on devices */
-#define RAID10_USE_FAR_SETS	(1 << 17) /* Use set instead of whole stripe rotation */
+#define RAID10_BROCKEN_USE_FAR_SETS	(1 << 17) /* Broken in raid10.c: use set instead of whole stripe rotation */
+#define RAID10_USE_FAR_SETS	(1 << 18) /* Use set instead of whole stripe rotation */
 #define RAID10_FAR_COPIES_SHIFT	8	  /* raid10 # far copies shift (2nd byte of layout) */
 
 /* Return md raid10 near copies for @layout */
@@ -682,18 +682,24 @@ static unsigned _raid10_far_copies(int layout)
 	return _raid10_near_copies(layout >> RAID10_FAR_COPIES_SHIFT);
 }
 
-/* Return md raid10 far copies for @layout */
+/* Return true if md raid10 offset for @layout */
 static unsigned _is_raid10_offset(int layout)
 {
 	return layout & RAID10_OFFSET;
+}
+
+/* Return true if md raid10 near for @layout */
+static unsigned _is_raid10_near(int layout)
+{
+	return !_is_raid10_offset(layout) && _raid10_near_copies(layout) > 1;
 }
 
 /* Return md raid10 layout string for @layout */
 static char *raid10_md_layout_to_format(int layout)
 {
 	/*
-	 * Bit 16 and 17 stand for "offset" (i.e. adjacent
-	 * stripes hold copies) and "use_far_sets"
+	 * Bit 16 stands for "offset"
+	 * (i.e. adjacent stripes hold copies)
 	 *
 	 * Refer to MD's raid10.c for details
 	 */
@@ -2454,8 +2460,10 @@ static void super_sync(struct mddev *mddev, struct md_rdev *rdev)
 	sb->events = cpu_to_le64(mddev->events);
 
 	sb_update_failed_devices(sb, failed_devices);
-
+#if 0
+/* HM FIXME: REMOVME: devel logging */
 DMINFO("%s %u rdev->raid_disk=%d recovery_offset=%llu", __func__, __LINE__, rdev->raid_disk, (unsigned long long) rdev->recovery_offset);
+#endif
 	sb->disk_recovery_offset = cpu_to_le64(rdev->recovery_offset);
 	sb->array_resync_offset = cpu_to_le64(mddev->recovery_cp);
 	sb->reshape_position = cpu_to_le64(mddev->reshape_position);
@@ -2573,8 +2581,7 @@ static int super_validate_freshest(struct raid_set *rs, struct md_rdev *rdev)
 	uint64_t events_sb;
 	uint64_t failed_devices[DISKS_ARRAY_ELEMS];
 	struct dm_raid_superblock *sb;
-	uint32_t new_devs = 0;
-	uint32_t rebuilds = 0;
+	uint32_t new_devs = 0, rebuild_and_new = 0, rebuilds = 0;
 	struct md_rdev *r;
 	struct raid_dev *rd;
 	struct dm_raid_superblock *sb2;
@@ -2698,25 +2705,21 @@ static int super_validate_freshest(struct raid_set *rs, struct md_rdev *rdev)
 	for_each_rd(rd, rs) {
 		r = &rd->rdev;
 
-#if 1
 		if (test_bit(FirstUse, &r->flags))
 			new_devs++;
-#else
-		if (test_bit(FirstUse, &r->flags) && !test_bit(d, (void *) rs->rebuild_disks))
-{
-DMINFO("%s %u %u=%d", __func__, __LINE__, d, test_bit(d, (void *) rs->rebuild_disks));
-			new_devs++;
-}
-#endif
-		else if (!test_bit(In_sync, &r->flags)) {
-			DMINFO("Device %d specified for rebuild\nClearing superblock",
+
+		if (!test_bit(In_sync, &r->flags)) {
+			DMINFO("Device %d specified for rebuild; clearing superblock",
 				r->raid_disk);
 			rebuilds++;
+
+			if (test_bit(FirstUse, &r->flags))
+				rebuild_and_new++;
 		}
 
 		d++;
 	}
-DMINFO("%s %u new_devs=%u rs->rebuild_disks=%llX", __func__, __LINE__, new_devs, (unsigned long long) rs->rebuild_disks[0]);
+DMINFO("%s %u new_devs=%u rebuilds=%u rs->rebuild_disks=%llX", __func__, __LINE__, new_devs, rebuilds, (unsigned long long) rs->rebuild_disks[0]);
 
 	if (new_devs == rs->raid_disks || !rebuilds) {
 		/* Replace a broken device */
@@ -2726,16 +2729,22 @@ DMINFO("%s %u new_devs=%u rs->rebuild_disks=%llX", __func__, __LINE__, new_devs,
 			DMINFO("Superblocks created for new raid set");
 			set_bit(MD_ARRAY_FIRST_USE, &mddev->flags);
 			mddev->recovery_cp = 0;
-		} else if (new_devs && !(rs->ctr_flags & (CTR_FLAG_DELTA_DISKS|CTR_FLAG_REBUILD))) {
+		} else if (new_devs && !rebuilds) {
 			DMERR("New device injected into existing raid set without "
 			      "'delta_disks' or 'rebuild' parameter specified");
 			return -EINVAL;
 		}
-	} else if (new_devs) {
+	} else if (new_devs != rebuilds) {
 		DMERR("'rebuild' devices cannot be injected into"
 		      " a raid set with other first-time devices");
 		return -EINVAL;
 	} else if (rebuilds) {
+		if (rebuilds != rebuild_and_new) {
+			DMERR("new device%s provided w/o 'rebuild'",
+			      new_devs > 1 ? "s" : "");
+			return -EINVAL;
+		}
+
 		if (mddev->recovery_cp != MaxSector) {
 			DMERR("'rebuild' specified while raid set is not in-sync");
 			return -EINVAL;
@@ -2771,12 +2780,20 @@ DMINFO("%s %u new_devs=%u rs->rebuild_disks=%llX", __func__, __LINE__, new_devs,
 				continue;
 
 			if (role != r->raid_disk) {
-				if (!(rs_is_raid10(rs) && rt_is_raid0(rs->raid_type)) &&
+				if (_is_raid10_near(mddev->layout)) {
+					if (mddev->raid_disks % _raid10_near_copies(mddev->layout) ||
+					    rs->raid_disks % _raid10_near_copies(mddev->layout))
+						return ti_error_einval(rs->ti, "Cannot change raid10 near "
+									       "set to odd # of devices!");
+
+					sb2->array_position = cpu_to_le32(r->raid_disk);
+
+				} else if (!(rs_is_raid10(rs) && rt_is_raid0(rs->raid_type)) &&
 				    !(rs_is_raid0(rs) && rt_is_raid10(rs->raid_type)) &&
 				    !rt_is_raid1(rs->raid_type))
 					return ti_error_einval(rs->ti, "Cannot change device positions in raid set");
 
-				DMINFO("raid1 device #%d now at position #%d",
+				DMINFO("raid device #%d now at position #%d",
 				       role, r->raid_disk);
 			}
 
@@ -3155,10 +3172,6 @@ static int rs_run(struct raid_set *rs)
 		}
 
 		DMINFO("Continuing with reshape");
-#if 0
-		if (mddev->delta_disks)
-			rs_set_cur(rs);
-#endif
 
 	/* Check for takeover,reshape or resize */
 	} else if (rs_conversion_requested(rs)) {
@@ -3180,11 +3193,7 @@ static int rs_run(struct raid_set *rs)
 	recovery_cp = mddev->recovery_cp;
 
 	if (!resize_requested)
-{
 		mddev->recovery_cp = MaxSector;
-DMINFO("NO %s %u mddev->recovery_cp==%llu", __func__, __LINE__, (unsigned long long) mddev->recovery_cp);
-} else
-DMINFO("YES %s %u mddev->recovery_cp==%llu", __func__, __LINE__, (unsigned long long) mddev->recovery_cp);
 
 	/* If constructor requested it, change data and new_data offsets */
 	r = rs_adjust_data_offsets(rs);
