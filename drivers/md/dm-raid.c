@@ -1069,11 +1069,11 @@ static int rs_check_reshape(struct raid_set *rs, const char **errmsg)
 	if (!mddev->pers->check_reshape)
 		*errmsg = "Reshape not supported";
 	else if (mddev->degraded)
-		*errmsg = "Can't convert degraded raid set";
+		*errmsg = "Can't reshape degraded raid set";
 	else if (mddev->recovery_cp && mddev->recovery_cp != MaxSector)
 		*errmsg = "Convert request on recovering raid set prohibited";
 	else if (rs_is_reshaping(rs))
-		*errmsg = "raid set already converting!";
+		*errmsg = "raid set already reshaping!";
 	else if (!(rs_is_raid10(rs) || rs_is_raid456(rs)))
 		*errmsg = "Reshaping only supported for raid4/5/6/10";
 	else {
@@ -1411,7 +1411,6 @@ static int rs_setup_reshape(struct raid_set *rs)
 
 	mddev->delta_disks = rs->delta_disks;
 	cur_raid_devs = mddev->raid_disks;
-	// mddev->raid_disks = rs->raid_disks;
 DMINFO("%s %u mddev->raid_disks=%d mddev->delta_disks=%d", __func__, __LINE__, mddev->raid_disks, mddev->delta_disks);
 
 	/* Ignore impossible layout change whilst adding/removing disks */
@@ -1469,6 +1468,7 @@ DMINFO("%s %u mddev->raid_disks=%d mddev->delta_disks=%d", __func__, __LINE__, m
 			rdev->raid_disk = d;
 
 			rdev->sectors = mddev->dev_sectors;
+			rdev->recovery_offset = MaxSector;
 		}
 
 		mddev->reshape_backwards = 0; /* adding disks -> forward reshape */
@@ -1782,6 +1782,15 @@ static int parse_dev_params(struct raid_set *rs, struct dm_arg_set *as)
 		 */
 		return ti_error_einval(rs->ti, "Unable to rebuild a drive w/o any metadata device");
 	}
+
+	/* Now set any new delta disks added to !In_sync */
+	if (rs->delta_disks > 0)
+		for (i = rs->raid_disks - rs->delta_disks; i < rs->raid_disks; i++) {
+			rdev = &rs->dev[i].rdev;
+
+			clear_bit(In_sync, &rdev->flags);
+			rdev->recovery_offset = 0;
+		}
 
 	return 0;
 }
@@ -2744,7 +2753,6 @@ DMINFO("%s %u new_devs=%u rebuilds=%u rs->rebuild_disks=%llX", __func__, __LINE_
 			      new_devs > 1 ? "s" : "");
 			return -EINVAL;
 		}
-
 		if (mddev->recovery_cp != MaxSector) {
 			DMERR("'rebuild' specified while raid set is not in-sync");
 			return -EINVAL;
