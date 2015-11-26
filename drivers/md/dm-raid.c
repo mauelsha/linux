@@ -2790,7 +2790,7 @@ DMINFO("%s %u new_devs=%u rebuilds=%u rs->rebuild_disks=%llX", __func__, __LINE_
 			if (role != r->raid_disk) {
 				if (_is_raid10_near(mddev->layout)) {
 					if (mddev->raid_disks % _raid10_near_copies(mddev->layout) ||
-					    rs->raid_disks % _raid10_near_copies(mddev->layout))
+					    rs->raid_disks % rs->raid10_copies)
 						return ti_error_einval(rs->ti, "Cannot change raid10 near "
 									       "set to odd # of devices!");
 
