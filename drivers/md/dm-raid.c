@@ -695,7 +695,7 @@ static unsigned _is_raid10_near(int layout)
 }
 
 /* Return md raid10 layout string for @layout */
-static char *raid10_md_layout_to_format(int layout)
+static const char *raid10_md_layout_to_format(int layout)
 {
 	/*
 	 * Bit 16 stands for "offset"
@@ -808,11 +808,13 @@ static int rs_set_dev_and_array_sectors(struct raid_set *rs)
 		/* HM FIXME: reshape? */
 		rs->md.array_sectors = dev_sectors;
 
-		dev_sectors *= rs->raid10_copies;
-		if (sector_div(dev_sectors, data_stripes))
-			dev_sectors++;
+ 		if (rs->raid10_copies) {
+			dev_sectors *= rs->raid10_copies;
+			if (sector_div(dev_sectors, data_stripes))
+				dev_sectors++;
 
-		rs->md.dev_sectors = dev_sectors;
+			rs->md.dev_sectors = dev_sectors;
+		}
 
 	} else if (!sector_div(dev_sectors, data_stripes)) {
 		rs->md.dev_sectors = dev_sectors;
@@ -1306,6 +1308,10 @@ static int rs_adjust_data_offsets(struct raid_set *rs)
 
 	} else {
 		/*
+		 * User space passes in 0 for data offset after having removed reshape space
+		 *
+		 * - or - (data offset != 0)
+		 *
 		 * Changing RAID layout or chunk size -> toggle offsets
 		 *
 		 * - before reshape: data is at offset rs->data_offset 0 and
@@ -1317,15 +1323,17 @@ static int rs_adjust_data_offsets(struct raid_set *rs)
 		 * - after reshape: data is at offset 0 if i was at offset != 0
 		 *                  of at offset != 0 if it was at offset 0
 		 *                  on each component LV
+		 *
 		 */
-		data_offset = rd->rdev.data_offset;
+		data_offset = rs->data_offset ? rd->rdev.data_offset : 0;
 		new_data_offset = data_offset ? 0 : rs->data_offset;
 	}
 
 	/*
 	 * Make sure we got a minimum amount of free sectors per device
 	 */
-	if (_dev_size(rd) - rd->rdev.sectors < MIN_FREE_RESHAPE_SPACE)
+	if (rs->data_offset &&
+	   _dev_size(rd) - rd->rdev.sectors < MIN_FREE_RESHAPE_SPACE)
 		return ti_error_ret(rs->ti, data_offset ? "No space for forward reshape" :
 							  "No space for backward reshape",
 				   -ENOSPC);
@@ -1339,6 +1347,19 @@ out:
 	return 0;
 }
 
+/* Userpace reordered disks -> adjust raid_disk indexes in @rs */
+static void _reorder_raid_disk_indexes(struct raid_set *rs)
+{
+	int i = 0;
+	struct raid_dev *rd;
+
+	for_each_rd(rd, rs) {
+		rd->rdev.raid_disk = i;
+		rd->rdev.saved_raid_disk = rd->rdev.new_raid_disk = -1;
+		i++;
+	}
+}
+
 /*
  * Setup @rs for takeover to a different raid level
  */
@@ -1350,18 +1371,11 @@ static int rs_setup_takeover(struct raid_set *rs)
 
 	if (rt_is_raid10(rs->raid_type)) {
 		if (mddev->level == 0) {
-			int i = 0;
-			struct raid_dev *rd;
-
 			/* 1 far (i.e. _no_ division of disks into far copies) and rs->raid_copies _near_ copies */
 			mddev->new_layout = (1 << 8) + rs->raid10_copies;
 
 			/* Userpace reordered disks -> adjust raid_disk indexes */
-			for_each_rd(rd, rs) {
-				rd->rdev.raid_disk = i;
-				rd->rdev.saved_raid_disk = rd->rdev.new_raid_disk = -1;
-				i++;
-			}
+			_reorder_raid_disk_indexes(rs);
 
 		} else if (mddev->level == 1)
 			mddev->new_layout = (1 << 8) + rs->raid_disks;
@@ -1657,7 +1671,18 @@ static int rs_setup_conversion(struct raid_set *rs)
 		/* HM FIXME REMOVEME: devel */
 		DMINFO("%s %u *** reshape ***", __func__, __LINE__);
 #endif
-		if (rs_is_raid456(rs) || rs_is_raid10(rs))
+		/* HM FIXME: process raid10 near copies change cleaner */
+		if (rs_is_raid10(rs) &&
+		    !strcmp("near", raid10_md_layout_to_format(mddev->layout)) &&
+		    rs->raid_disks != mddev->raid_disks &&
+		    rs->raid10_copies &&
+		    rs->raid10_copies != _raid10_near_copies(mddev->layout)) {
+			/* Userpace reordered disks -> adjust raid_disk indexes */
+			_reorder_raid_disk_indexes(rs);
+			mddev->raid_disks = rs->raid_disks;
+			mddev->layout = mddev->new_layout = raid10_format_to_md_layout("near", rs->raid10_copies);
+
+		} else if (rs_is_raid456(rs) || rs_is_raid10(rs))
 			_set_flag(RT_FLAG_RESHAPE, &rs->runtime_flags);
 
 		/* HM FIXME: process raid1 cleaner via delta_disks? */
@@ -2850,7 +2875,7 @@ static int super_validate(struct raid_set *rs, struct md_rdev *rdev)
 
 #if DEVEL_OUTPUT
 		/* HM FIXME REMOVEME: devel */
-		DMINFO("%s %u recovery_offset=%llu raid_disk=%d", __func__, __LINE__, (unsigned long long) rdev->recovery_offset, rdev->raid_disk);
+		DMINFO("%s %u recovery_offset=%llu raid_disk=%d rdev->sectors=%llu", __func__, __LINE__, (unsigned long long) rdev->recovery_offset, rdev->raid_disk, (unsigned long long) rdev->sectors);
 #endif
 	}
 
@@ -2867,7 +2892,6 @@ static int super_validate(struct raid_set *rs, struct md_rdev *rdev)
 	if (FEATURE_FLAG_SUPPORTS_RESHAPE & le32_to_cpu(sb->features)) {
 		rdev->data_offset = le64_to_cpu(sb->data_offset);
 		rdev->new_data_offset = le64_to_cpu(sb->new_data_offset);
-		rdev->sectors = le64_to_cpu(sb->sectors);
 	}
 
 	return 0;
