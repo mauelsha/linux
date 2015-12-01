@@ -532,21 +532,6 @@ static const char *_argname_by_flag(const uint32_t flag)
 /* Return invalid ctr flags for the raid level of @rs */
 static uint32_t _invalid_flags(struct raid_set *rs)
 {
-#if 0
-	struct {
-		bool (*fn)(struct raid_type *rt);
-		uint64_t flags;
-	} _f[] = {
-		{ rt_is_RAID0, raid0_INVALID_FLAGS },
-		{ rt_is_RAID1, raid1_INVALID_FLAGS },
-		{ rt_is_RAID10, raid10_INVALID_FLAGS },
-		{ rt_is_RAID456, raid456_INVALID_FLAGS },
-	}, *f = _f + ARRAY_SIZE(_f);
-
-	while (f-- > _f)
-		if (f->fn(rs->raid_type))
-			return f->flags;
-#else
 	if (rt_is_raid0(rs->raid_type))
 		return RAID0_INVALID_FLAGS;
 	else if (rt_is_raid1(rs->raid_type))
@@ -555,7 +540,7 @@ static uint32_t _invalid_flags(struct raid_set *rs)
 		return RAID10_INVALID_FLAGS;
 	else if (rt_is_raid456(rs->raid_type))
 		return RAID456_INVALID_FLAGS;
-#endif
+
 	BUG();
 }
 
@@ -692,6 +677,12 @@ static unsigned _is_raid10_offset(int layout)
 static unsigned _is_raid10_near(int layout)
 {
 	return !_is_raid10_offset(layout) && _raid10_near_copies(layout) > 1;
+}
+
+/* Return true if md raid10 far for @layout */
+static unsigned _is_raid10_far(int layout)
+{
+	return !_is_raid10_offset(layout) && _raid10_far_copies(layout) > 1;
 }
 
 /* Return md raid10 layout string for @layout */
@@ -1029,9 +1020,10 @@ static bool rs_reshape_requested(struct raid_set *rs)
 	if (!mddev->level)
 		return false;
 
-	return  mddev->new_layout != mddev->layout ||
-		mddev->new_chunk_sectors != mddev->chunk_sectors ||
-		rs->raid_disks + rs->delta_disks != mddev->raid_disks;
+	return  !_is_raid10_far(mddev->new_layout) &&
+		(mddev->new_layout != mddev->layout ||
+		 mddev->new_chunk_sectors != mddev->chunk_sectors ||
+		 rs->raid_disks + rs->delta_disks != mddev->raid_disks);
 }
 
 /* True if @rs requested to resize by ctr */
@@ -2916,14 +2908,7 @@ static struct md_rdev *superblocks_load(struct raid_set *rs)
 		/* No metadata device -> ignore */
 		if (!rdev->meta_bdev)
 			continue;
-#if 0
-		/* HM FIXME: find a way to avoid _clear_lvs() in uspace() */
-		/* Rebuild data image dev -> ignore metadata */
-		if (test_bit(d - 1, (void *) rs->rebuild_disks)) {
-			set_bit(FirstUse, &rdev->flags);
-			continue;
-		}
-#endif
+
 		r = super_load(rs, rdev, freshest);
 		switch (r) {
 		case 1:
@@ -2976,7 +2961,7 @@ static int load_and_analyse_superblocks(struct raid_set *rs)
 	struct md_rdev *freshest = superblocks_load(rs);
 
 	/* All raid disks failed */
-	if (rs->failed_disks == rs->raid_disks)
+	if (rs->failed_disks >= rs->raid_disks)
 		return -EIO;
 
 	/* In case of no metadata devices present (i.e. raid0) */
@@ -3138,6 +3123,9 @@ static void rs_config_restore(struct raid_set *rs, struct rs_layout *l)
  *
  * - else just start the raid set
  *
+ *
+ * HM FIXME: md_run in ctr to bind resources and read superblock again in resume
+ *
  */
 static int rs_run(struct raid_set *rs)
 {
@@ -3222,10 +3210,10 @@ static int rs_run(struct raid_set *rs)
 	 * md_run() will fail on takeover/reshape if recovery_cp set to 0,
 	 * so reset it and restore afterwards
 	 */
-	recovery_cp = mddev->recovery_cp;
-
-	if (!resize_requested)
+	if (!resize_requested) {
+		recovery_cp = mddev->recovery_cp;
 		mddev->recovery_cp = MaxSector;
+	}
 
 	/* If constructor requested it, change data and new_data offsets */
 	r = rs_adjust_data_offsets(rs);
@@ -3256,9 +3244,8 @@ static int rs_run(struct raid_set *rs)
 		set_bit(MD_RECOVERY_REQUESTED, &mddev->recovery);
 		set_bit(MD_RECOVERY_SYNC, &mddev->recovery);
 		mddev->resync_min = mddev->recovery_cp;
-	}
-
-	mddev->recovery_cp = recovery_cp;
+	} else
+		mddev->recovery_cp = recovery_cp;
 
 	rs_set_capacity(rs);
 #if DEVEL_OUTPUT
