@@ -3130,6 +3130,7 @@ static void rs_config_restore(struct raid_set *rs, struct rs_layout *l)
 static int rs_run(struct raid_set *rs)
 {
 	int r, resize_requested;
+	unsigned long chunksize;
 	sector_t recovery_cp;
 	struct rs_layout rs_layout;
 	struct mddev *mddev = &rs->md;
@@ -3227,6 +3228,12 @@ static int rs_run(struct raid_set *rs)
 	/* HM FIXME REMOVEME: devel */
 	dump_mddev(mddev, "before md_run");
 #endif
+	/*
+	 * This is any new region_size aka MD bitmap chunksize ->
+	 * save in order to spot region size change after md_run()
+	 */
+	chunksize = mddev->bitmap_info.chunksize;
+
 	mddev_lock_nointr(mddev); /* Must be held on calling md_run() */
 	r = md_run(mddev);
 	if (r)
@@ -3234,6 +3241,19 @@ static int rs_run(struct raid_set *rs)
 
 	mddev->in_sync = 0;
 	mddev_suspend(mddev);
+
+	/* Resize bitmap to adjust to changed region soze aka MD bitmap chunksize */
+	if (mddev->bitmap_info.chunksize != chunksize) {
+#if DEVEL_OUTPUT
+		/* HM FIXME REMOVEME: devel */
+		DMINFO("Changing bitmap chunksize from %ld to %ld",
+		       mddev->bitmap_info.chunksize, chunksize);
+#endif
+		r = bitmap_resize(mddev->bitmap, mddev->dev_sectors, chunksize, 0);
+		if (r)
+			return r;
+	}
+		
 #if DEVEL_OUTPUT
 	/* HM FIXME REMOVEME: devel */
 	dump_mddev(mddev, "after md_run");
