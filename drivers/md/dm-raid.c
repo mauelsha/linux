@@ -2222,7 +2222,7 @@ static int parse_raid_params(struct raid_set *rs, struct dm_arg_set *as,
 			if (_test_and_set_flag(CTR_FLAG_RAID10_COPIES, &rs->ctr_flags))
 				return ti_error_einval(rs->ti, "Only one raid10_copies argument pair allowed");
 
-			if (!_in_range(value, 2, 0xFF))
+			if (!_in_range(value, 2, rs->raid_disks))
 				return ti_error_einval(rs->ti, "Bad value for 'raid10_copies'");
 
 			rs->raid10_copies = value;
@@ -3360,8 +3360,8 @@ static int raid_ctr(struct dm_target *ti, unsigned argc, char **argv)
 	if (as_nrd.argc != num_raid_devs * 2)
 		return ti_error_einval(ti, "Supplied raid devices do not match the count given");
 
-	if (num_raid_devs > MAX_RAID_DEVICES)
-		return ti_error_einval(ti, "Too many supplied raid devices");
+	if (!_in_range(num_raid_devs, 1, MAX_RAID_DEVICES))
+		return ti_error_einval(ti, "Invalid number of supplied raid devices");
 
 	rs = context_alloc(ti, rt, num_raid_devs);
 	if (IS_ERR(rs))
