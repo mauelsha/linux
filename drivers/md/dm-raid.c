@@ -1208,7 +1208,7 @@ static int get_metadata_device(struct raid_set *rs, const char *dev_name,
 }
 
 /*
- * Setup raid set @rs fro resize w/o changing number of raid disk.
+ * Setup raid set @rs for resize w/o changing number of raid disk.
  * 
  * I.e. component data images have changed size
  */
@@ -1222,12 +1222,19 @@ static int rs_setup_resize(struct raid_set *rs)
 	if (rs_is_reshaping(rs))
 		return -EPERM;
 
-DMINFO("%s %u rdev->sectors=%llu", __func__, __LINE__, (unsigned long long) rdev->sectors);
+DMINFO("%s %u rdev->sectors=%llu mddev->dev_sectors=%llu array_sectors=%llu", __func__, __LINE__,
+(unsigned long long) rdev->sectors,
+(unsigned long long) mddev->dev_sectors,
+(unsigned long long) mddev->array_sectors);
 
 	r = rs_set_dev_and_array_sectors(rs);
 	if (r)
 		return r;
 
+DMINFO("%s %u rdev->sectors=%llu mddev->dev_sectors=%llu array_sectors=%llu", __func__, __LINE__,
+(unsigned long long) rdev->sectors,
+(unsigned long long) mddev->dev_sectors,
+(unsigned long long) mddev->array_sectors);
 	/*
 	 * On extension unless raid0 or new raid set:
 	 *
@@ -2855,6 +2862,7 @@ static int super_validate(struct raid_set *rs, struct md_rdev *rdev)
 	sb = page_address(rdev->sb_page);
 
 	if (!test_and_clear_bit(FirstUse, &rdev->flags)) {
+		rdev->sectors = le64_to_cpu(sb->sectors);
 		rdev->recovery_offset = le64_to_cpu(sb->disk_recovery_offset);
 		if (rdev->recovery_offset == MaxSector)
 			set_bit(In_sync, &rdev->flags);
@@ -3149,6 +3157,7 @@ static int rs_run(struct raid_set *rs)
 
 #if DEVEL_OUTPUT
 	/* HM FIXME REMOVEME: devel */
+	DMINFO("rs->dev[0].rdev.sectors=%llu", (unsigned long long) rs->dev[0].rdev.sectors);
 	dump_mddev(mddev, "After load_and_analyse_superblocks()");
 #endif
 
@@ -3182,6 +3191,7 @@ static int rs_run(struct raid_set *rs)
 
 #if DEVEL_OUTPUT
 	/* HM FIXME REMOVEME: devel */
+	DMINFO("resize_requested=%d", resize_requested);
 	dump_mddev(mddev, "Before rs_is_reshaping()");
 #endif
 
@@ -3242,7 +3252,7 @@ static int rs_run(struct raid_set *rs)
 	mddev->in_sync = 0;
 	mddev_suspend(mddev);
 
-	/* Resize bitmap to adjust to changed region soze aka MD bitmap chunksize */
+	/* Resize bitmap to adjust to changed region size (aka MD bitmap chunksize) */
 	if (mddev->bitmap_info.chunksize != chunksize) {
 #if DEVEL_OUTPUT
 		/* HM FIXME REMOVEME: devel */
@@ -3261,6 +3271,10 @@ static int rs_run(struct raid_set *rs)
 	/* Be prepared for mddev_resume() in raid_resume() */
 	set_bit(MD_RECOVERY_FROZEN, &mddev->recovery);
 	if (resize_requested) {
+#if DEVEL_OUTPUT
+		/* HM FIXME REMOVEME: devel */
+		DMINFO("resize_requested!!!");
+#endif
 		set_bit(MD_RECOVERY_REQUESTED, &mddev->recovery);
 		set_bit(MD_RECOVERY_SYNC, &mddev->recovery);
 		mddev->resync_min = mddev->recovery_cp;
