@@ -1222,19 +1222,9 @@ static int rs_setup_resize(struct raid_set *rs)
 	if (rs_is_reshaping(rs))
 		return -EPERM;
 
-DMINFO("%s %u rdev->sectors=%llu mddev->dev_sectors=%llu array_sectors=%llu", __func__, __LINE__,
-(unsigned long long) rdev->sectors,
-(unsigned long long) mddev->dev_sectors,
-(unsigned long long) mddev->array_sectors);
-
 	r = rs_set_dev_and_array_sectors(rs);
 	if (r)
 		return r;
-
-DMINFO("%s %u rdev->sectors=%llu mddev->dev_sectors=%llu array_sectors=%llu", __func__, __LINE__,
-(unsigned long long) rdev->sectors,
-(unsigned long long) mddev->dev_sectors,
-(unsigned long long) mddev->array_sectors);
 	/*
 	 * On extension unless raid0 or new raid set:
 	 *
@@ -2862,6 +2852,7 @@ static int super_validate(struct raid_set *rs, struct md_rdev *rdev)
 	sb = page_address(rdev->sb_page);
 
 	if (!test_and_clear_bit(FirstUse, &rdev->flags)) {
+		/* Retrieve device size stored in superblock for rs_setup_resize() size change check to work */
 		rdev->sectors = le64_to_cpu(sb->sectors);
 		rdev->recovery_offset = le64_to_cpu(sb->disk_recovery_offset);
 		if (rdev->recovery_offset == MaxSector)
@@ -3142,6 +3133,7 @@ static int rs_run(struct raid_set *rs)
 	sector_t recovery_cp;
 	struct rs_layout rs_layout;
 	struct mddev *mddev = &rs->md;
+	struct raid_dev *rd;
 
 	/*
 	 * Backup raid set level, layout, ... from
@@ -3157,7 +3149,6 @@ static int rs_run(struct raid_set *rs)
 
 #if DEVEL_OUTPUT
 	/* HM FIXME REMOVEME: devel */
-	DMINFO("rs->dev[0].rdev.sectors=%llu", (unsigned long long) rs->dev[0].rdev.sectors);
 	dump_mddev(mddev, "After load_and_analyse_superblocks()");
 #endif
 
@@ -3191,7 +3182,6 @@ static int rs_run(struct raid_set *rs)
 
 #if DEVEL_OUTPUT
 	/* HM FIXME REMOVEME: devel */
-	DMINFO("resize_requested=%d", resize_requested);
 	dump_mddev(mddev, "Before rs_is_reshaping()");
 #endif
 
@@ -3210,6 +3200,14 @@ static int rs_run(struct raid_set *rs)
 		if (r)
 			return r;
 	}
+
+	/*
+	 * Set RAID devices new device size after processing based on
+	 * the (different) size in the superblocks before so
+	 * that the RAID can run with actual device sizes.
+	 */
+	for_each_rd(rd, rs)
+		rd->rdev.sectors = mddev->dev_sectors;
 
 	/* Enable bitmap unless raid0 */
 	rs_config_bitmap(rs);
@@ -3271,10 +3269,6 @@ static int rs_run(struct raid_set *rs)
 	/* Be prepared for mddev_resume() in raid_resume() */
 	set_bit(MD_RECOVERY_FROZEN, &mddev->recovery);
 	if (resize_requested) {
-#if DEVEL_OUTPUT
-		/* HM FIXME REMOVEME: devel */
-		DMINFO("resize_requested!!!");
-#endif
 		set_bit(MD_RECOVERY_REQUESTED, &mddev->recovery);
 		set_bit(MD_RECOVERY_SYNC, &mddev->recovery);
 		mddev->resync_min = mddev->recovery_cp;
