@@ -3416,10 +3416,7 @@ static void raid_dtr(struct dm_target *ti)
 	struct raid_set *rs = ti->private;
 
 	list_del_init(&rs->callbacks.list);
-
-	if (rs->md.ready)
-		md_stop(&rs->md);
-
+	md_stop(&rs->md);
 	context_free(rs);
 #if DEVEL_OUTPUT
 	/* HM FIXME REMOVEME: devel */
