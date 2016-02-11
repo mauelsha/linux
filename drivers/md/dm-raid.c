@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2010-2011 Neil Brown
- * Copyright (C) 2010-2015 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2010-2016 Red Hat, Inc. All rights reserved.
  *
  * This file is released under the GPL.
  */
@@ -260,9 +260,12 @@ static struct raid_type {
 	{"raid0",         "raid0 (striping)",			    0, 2, 0,  0 /* NONE */},
 	{"raid1",         "raid1 (mirroring)",			    0, 2, 1,  0 /* NONE */},
 	{"raid10",        "raid10 (striped mirrors)",		    0, 2, 10, ALGORITHM_RAID10_DEFAULT},
+#if 0
+	/* HM FIXME: do we want to allow the following type idnetifiers as in raid5/6? */
 	{"raid10_near",   "raid10_near (near copies)",		    0, 2, 10, ALGORITHM_RAID10_NEAR},
 	{"raid10_far",    "raid10_far (far copies)",		    0, 2, 10, ALGORITHM_RAID10_FAR},
 	{"raid10_offset", "raid10_offset (adjacent copies)",	    0, 2, 10, ALGORITHM_RAID10_OFFSET},
+#endif
 	{"raid4",         "raid4 (dedicated last parity disk)",	    1, 2, 4,  ALGORITHM_PARITY_N}, /* Native MD raid4 layout */
 	{"raid5_n",       "raid5 (dedicated last parity disk)",	    1, 2, 5,  ALGORITHM_PARITY_N},
 	{"raid5_ls",      "raid5 (left symmetric)",		    1, 2, 5,  ALGORITHM_LEFT_SYMMETRIC},
@@ -2068,7 +2071,7 @@ static int parse_raid_params(struct raid_set *rs, struct dm_arg_set *as,
 			     unsigned num_raid_params)
 {
 	int r, region_size = 0, value;
-	int dont_expect_raid10_format = rs_is_raid10(rs) && rs->raid_type->algorithm != ALGORITHM_RAID10_DEFAULT;
+	bool dont_expect_raid10_format = rs_is_raid10(rs) && rs->raid_type->algorithm != ALGORITHM_RAID10_DEFAULT;
 	unsigned rebuilds = 0;
 	unsigned i;
 	const char *arg, *key, *raid10_format = "near";
