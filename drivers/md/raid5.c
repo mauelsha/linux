@@ -7459,33 +7459,23 @@ static int raid5_start_reshape(struct mddev *mddev)
 	 */
 	if (mddev->delta_disks >= 0) {
 		rdev_for_each(rdev, mddev)
-{
-pr_alert("%s %u raid_disk=%d flags=%lx previous_raid_disks=%d\n", __func__, __LINE__, rdev->raid_disk, rdev->flags, conf->previous_raid_disks);
 			if (rdev->raid_disk < 0 &&
 			    !test_bit(Faulty, &rdev->flags)) {
 				if (raid5_add_disk(mddev, rdev) == 0) {
 					if (rdev->raid_disk
 					    >= conf->previous_raid_disks)
-{
-pr_alert("%s %u In_sync\n", __func__, __LINE__);
 						set_bit(In_sync, &rdev->flags);
-}
 					else
-{
-pr_alert("%s %u recovery_offset=0\n", __func__, __LINE__);
 						rdev->recovery_offset = 0;
-}
 
 					if (sysfs_link_rdev(mddev, rdev))
 						/* Failure here is OK */;
 				}
 			} else if (rdev->raid_disk >= conf->previous_raid_disks
 				   && !test_bit(Faulty, &rdev->flags)) {
-pr_alert("%s %u recovery_offset=0\n", __func__, __LINE__);
 				/* This is a spare that was manually added */
 				set_bit(In_sync, &rdev->flags);
 			}
-}
 
 		/* When a reshape changes the number of devices,
 		 * ->degraded is measured against the larger of the
@@ -7653,6 +7643,7 @@ static void *raid45_takeover_raid0(struct mddev *mddev, int level)
 	mddev->dev_sectors = sectors;
 	mddev->new_level = level;
 	mddev->new_layout = ALGORITHM_PARITY_N;
+	mddev->new_chunk_sectors = mddev->chunk_sectors;
 	mddev->raid_disks += 1;
 	mddev->delta_disks = 1;
 	/* make sure it will be not marked as dirty */
