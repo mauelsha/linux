@@ -1,6 +1,6 @@
 /*
  * raid5.c : Multiple Devices driver for Linux
- *	   Copyright (C) 1996, 1997 Ingo Molnar, Miguel de Icaza, Gadi tmap_Oxman
+ *	   Copyright (C) 1996, 1997 Ingo Molnar, Miguel de Icaza, Gadi Oxman
  *	   Copyright (C) 1999, 2000 Ingo Molnar
  *	   Copyright (C) 2002, 2003 H. Peter Anvin
  *
@@ -594,7 +594,6 @@ static int calc_degraded(struct r5conf *conf)
 	int degraded, degraded2;
 	int i;
 
-pr_alert("%s %u\n", __func__, __LINE__);
 	rcu_read_lock();
 	degraded = 0;
 	for (i = 0; i < conf->previous_raid_disks; i++) {
@@ -602,11 +601,7 @@ pr_alert("%s %u\n", __func__, __LINE__);
 		if (rdev && test_bit(Faulty, &rdev->flags))
 			rdev = rcu_dereference(conf->disks[i].replacement);
 		if (!rdev || test_bit(Faulty, &rdev->flags))
-{
-pr_alert("%s %u degraded++ !!!\n", __func__, __LINE__);
-
 			degraded++;
-}
 		else if (test_bit(In_sync, &rdev->flags))
 			;
 		else
@@ -620,17 +615,11 @@ pr_alert("%s %u degraded++ !!!\n", __func__, __LINE__);
 			 * be in-sync.
 			 */
 			if (conf->raid_disks >= conf->previous_raid_disks)
-{
 				degraded++;
-pr_alert("%s %u degraded++ !!!\n", __func__, __LINE__);
-}
 	}
 	rcu_read_unlock();
 	if (conf->raid_disks == conf->previous_raid_disks)
-{
-pr_alert("%s %u returning degraded=%d\n", __func__, __LINE__, degraded);
 		return degraded;
-}
 	rcu_read_lock();
 	degraded2 = 0;
 	for (i = 0; i < conf->raid_disks; i++) {
@@ -638,10 +627,7 @@ pr_alert("%s %u returning degraded=%d\n", __func__, __LINE__, degraded);
 		if (rdev && test_bit(Faulty, &rdev->flags))
 			rdev = rcu_dereference(conf->disks[i].replacement);
 		if (!rdev || test_bit(Faulty, &rdev->flags))
-{
-pr_alert("%s %u degraded2++ !!!\n", __func__, __LINE__);
 			degraded2++;
-}
 		else if (test_bit(In_sync, &rdev->flags))
 			;
 		else
@@ -7415,10 +7401,7 @@ static int raid5_start_reshape(struct mddev *mddev)
 		return -ENOSPC;
 
 	if (has_failed(conf))
-{
-pr_alert("%s %u has_failed()!\n", __func__, __LINE__);
 		return -EINVAL;
-}
 
 	rdev_for_each(rdev, mddev) {
 		if (!test_bit(In_sync, &rdev->flags)
@@ -7430,11 +7413,7 @@ pr_alert("%s %u has_failed()!\n", __func__, __LINE__);
 		/* Not enough devices even to make a degraded array
 		 * of that size
 		 */
-{
-pr_alert("%s %u not enough devices! spares=%u mddev->degraded=%d mddev->delta_disks=%d conf->max_degraded=%d\n",
-	 __func__, __LINE__, spares, mddev->degraded, mddev->delta_disks, conf->max_degraded);
 		return -EINVAL;
-}
 
 	/* Refuse to reduce size of the array.  Any reductions in
 	 * array size must be through explicit setting of array_size
@@ -7469,8 +7448,6 @@ pr_alert("%s %u not enough devices! spares=%u mddev->degraded=%d mddev->delta_di
 	write_seqcount_end(&conf->gen_lock);
 	spin_unlock_irq(&conf->device_lock);
 
-pr_alert("%s %u conf->reshape_progress=%llu\n", __func__, __LINE__, (long long unsigned) conf->reshape_progress);
-
 	/* Now make sure any requests that proceeded on the assumption
 	 * the reshape wasn't running - like Discard or Read - have
 	 * completed.
@@ -7487,33 +7464,23 @@ pr_alert("%s %u conf->reshape_progress=%llu\n", __func__, __LINE__, (long long u
 	 */
 	if (mddev->delta_disks >= 0) {
 		rdev_for_each(rdev, mddev)
-{
-pr_alert("%s %u raid_disk=%d flags=%lx previous_raid_disks=%d\n", __func__, __LINE__, rdev->raid_disk, rdev->flags, conf->previous_raid_disks);
 			if (rdev->raid_disk < 0 &&
 			    !test_bit(Faulty, &rdev->flags)) {
 				if (raid5_add_disk(mddev, rdev) == 0) {
 					if (rdev->raid_disk
 					    >= conf->previous_raid_disks)
-{
-pr_alert("%s %u In_sync\n", __func__, __LINE__);
 						set_bit(In_sync, &rdev->flags);
-}
 					else
-{
-pr_alert("%s %u recovery_offset=0\n", __func__, __LINE__);
 						rdev->recovery_offset = 0;
-}
 
 					if (sysfs_link_rdev(mddev, rdev))
 						/* Failure here is OK */;
 				}
 			} else if (rdev->raid_disk >= conf->previous_raid_disks
 				   && !test_bit(Faulty, &rdev->flags)) {
-pr_alert("%s %u recovery_offset=0\n", __func__, __LINE__);
 				/* This is a spare that was manually added */
 				set_bit(In_sync, &rdev->flags);
 			}
-}
 
 		/* When a reshape changes the number of devices,
 		 * ->degraded is measured against the larger of the
@@ -7683,6 +7650,7 @@ static void *raid45_takeover_raid0(struct mddev *mddev, int level)
 	mddev->dev_sectors = sectors;
 	mddev->new_level = level;
 	mddev->new_layout = ALGORITHM_PARITY_N;
+	mddev->new_chunk_sectors = mddev->chunk_sectors;
 	mddev->raid_disks += 1;
 	mddev->delta_disks = 1;
 	/* make sure it will be not marked as dirty */

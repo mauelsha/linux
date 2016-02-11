@@ -3429,7 +3429,6 @@ static int setup_geo(struct geom *geo, struct mddev *mddev, enum geo_type new)
 	default: /* Not a valid layout */
 		return -1;
 	}
-
 	geo->chunk_mask = chunk - 1;
 	geo->chunk_shift = ffz(~chunk);
 	return nc*fc;
