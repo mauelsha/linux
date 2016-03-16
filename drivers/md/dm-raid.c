@@ -20,7 +20,6 @@
 #include "bitmap.h"
 
 #include <linux/device-mapper.h>
-#include <linux/raid/md_p.h>
 
 #define DM_MSG_PREFIX		"raid"
 #define	MAX_RAID_DEVICES	253 /* MD raid limit */
@@ -317,13 +316,7 @@ static bool _in_range(long v, long min, long max)
 /* Count maximum of set bits in @bitset (256 bits max) */
 static unsigned _count_bits(uint64_t *bitset)
 {
-	int n = DISKS_ARRAY_ELEMS;
-	unsigned r = 0;
-
-	while (n--)
-		r += hweight64(bitset[n]);
-
-	return r;
+	return memweight(bitset, DISKS_ARRAY_ELEMS * sizeof(*bitset));
 }
 
 /* Set single @flag in @flags */
