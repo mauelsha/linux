@@ -6893,6 +6893,7 @@ static int raid5_run(struct mddev *mddev)
 	mddev->dev_sectors &= ~(mddev->chunk_sectors - 1);
 	mddev->resync_max_sectors = mddev->dev_sectors;
 
+printk(KERN_WARNING "%s %u degraded=%u dirty_parity_disks=%u conf->raid_disks=%u conf->previous_raid_disks=%u max_degraded=%u ok_start_degraded=%u\n\n", __func__, __LINE__, mddev->degraded, dirty_parity_disks, conf->raid_disks, conf->previous_raid_disks, conf->max_degraded, mddev->ok_start_degraded);
 	if (mddev->degraded > dirty_parity_disks &&
 	    mddev->recovery_cp != MaxSector) {
 		if (mddev->ok_start_degraded)
@@ -7045,7 +7046,9 @@ static void raid5_free(struct mddev *mddev, void *priv)
 {
 	struct r5conf *conf = priv;
 
-	free_conf(conf);
+	if (conf)
+		free_conf(conf);
+
 	mddev->to_remove = &raid5_attrs_group;
 }
 
@@ -7305,8 +7308,10 @@ static int raid5_resize(struct mddev *mddev, sector_t sectors)
 			return ret;
 	}
 	md_set_array_sectors(mddev, newsize);
-	set_capacity(mddev->gendisk, mddev->array_sectors);
-	revalidate_disk(mddev->gendisk);
+	if (mddev->queue) {
+		set_capacity(mddev->gendisk, mddev->array_sectors);
+		revalidate_disk(mddev->gendisk);
+	}
 	if (sectors > mddev->dev_sectors &&
 	    mddev->recovery_cp > mddev->dev_sectors) {
 		mddev->recovery_cp = mddev->dev_sectors;
@@ -7563,8 +7568,10 @@ static void raid5_finish_reshape(struct mddev *mddev)
 
 		if (mddev->delta_disks > 0) {
 			md_set_array_sectors(mddev, raid5_size(mddev, 0, 0));
-			set_capacity(mddev->gendisk, mddev->array_sectors);
-			revalidate_disk(mddev->gendisk);
+			if (mddev->queue) {
+				set_capacity(mddev->gendisk, mddev->array_sectors);
+				revalidate_disk(mddev->gendisk);
+			}
 		} else {
 			int d;
 			spin_lock_irq(&conf->device_lock);
